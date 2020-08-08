@@ -121,513 +121,21 @@ namespace UnityExt.Core {
         /// </summary>
         public class Manager : MonoBehaviour {
 
-            #region class ActivityList
+            /// <summary>
+            /// Handler for all activity execution.
+            /// </summary>
+            public ActivityManager handler { get { return m_handler==null ? (m_handler = new ActivityManager()) : m_handler; } }
+            protected ActivityManager m_handler;
 
             /// <summary>
-            /// Base class to handle activities.
+            /// Unity Calls
             /// </summary>
-            internal class ActivityList {
-
-                /// <summary>
-                /// Activities
-                /// </summary>
-                public List<Activity> la;
-
-                /// <summary>
-                /// Current iterator for activities
-                /// </summary>
-                public int ia;
-
-                /// <summary>
-                /// Context of execution.
-                /// </summary>
-                public Context context;
-
-                /// <summary>
-                /// Timer for async loops.
-                /// </summary>
-                public System.Diagnostics.Stopwatch timer;
-
-                /// <summary>
-                /// Internals.
-                /// </summary>
-                private string m_id_query;
-
-                /// <summary>
-                /// CTOR.
-                /// </summary>
-                public ActivityList(Context p_context) {
-                    la = new List<Activity>(1000);
-                    ia = 0;
-                    context = p_context;
-                    timer   = context == Context.Async ? new System.Diagnostics.Stopwatch() : null;
-                }
-
-                /// <summary>
-                /// Clear the lists
-                /// </summary>
-                virtual public void Clear() {
-                    if(la!=null) la.Clear();
-                    context = (Context)(-1);
-                    if(timer!=null) timer.Stop();
-                }
-
-                /// <summary>
-                /// Searches for an activity by its id.
-                /// </summary>
-                /// <param name="p_id"></param>
-                /// <returns></returns>
-                public Activity Find(string p_id) {
-                    Activity res = null;
-                    if(la==null) return res;
-                    m_id_query = p_id;
-                    res = la.Find(FindById);
-                    m_id_query = "";
-                    return res;
-                }
-
-                /// <summary>
-                /// Finds all activities matching the id.
-                /// </summary>
-                /// <param name="p_id"></param>
-                /// <returns></returns>
-                public List<Activity> FindAll(string p_id) {
-                    List<Activity> res = null;
-                    if(la==null) return res = new List<Activity>();
-                    m_id_query = p_id;
-                    res = la.FindAll(FindById);
-                    m_id_query = "";
-                    return res;
-                }
-
-                /// <summary>
-                /// Helper method to search activities.
-                /// </summary>
-                /// <param name="it"></param>
-                /// <returns></returns>
-                private bool FindById(Activity it) { return it==null ? false : (it.id == m_id_query); }
-
-                #region Execute
-
-                /// <summary>
-                /// Executes all activities.
-                /// </summary>
-                virtual public void Execute() {
-                    //Prune activities
-                    for(int i=0;i<la.Count;i++) { if(la[i]==null ? true : la[i].completed)la.RemoveAt(i--); }
-                    //Shortcut bool
-                    bool is_async = context == Context.Async;
-                    //If async prepare timer
-                    if(is_async)  timer.Restart();
-                    //If not async iterator is back to 0
-                    if(!is_async) ia=0;
-                    //Iterate across the list bounds
-                    for(int i=0;i<la.Count;i++) {
-                        //If async check timer slice limit and break out
-                        if(is_async) if(timer.ElapsedMilliseconds>=asyncTimeSlice) break;
-                        //Use iterator for async cases
-                        Activity it = la[ia];
-                        //Check if node can be executed
-                        bool is_valid = it==null ? false : !it.completed;                        
-                        //Steps the activity if valid
-                        if(is_valid) it.Execute();                        
-                        //Increment-loop the iterator (async might be mid iteration)
-                        ia = (ia+1)%la.Count;                        
-                    }
-
-                }
-
-                #endregion
-
-            }
-
-            /// <summary>
-            /// Auxiliary class to contain activity and interface lists.
-            /// </summary>
-            /// <typeparam name="T"></typeparam>
-            internal class ActivityList<T> : ActivityList {
-
-                /// <summary>
-                /// Interface nodes
-                /// </summary>
-                public List<T> li;
-
-                /// <summary>
-                /// Current iterator for interfaces
-                /// </summary>
-                public int ii;
-
-                /// <summary>
-                /// CTOR
-                /// </summary>
-                public ActivityList(Context p_context) : base(p_context) {                    
-                    li = new List<T>(1000);
-                    ii = 0;                    
-                }
-
-                /// <summary>
-                /// Clear this execution list.
-                /// </summary>
-                override public void Clear() {
-                    //Clear activities
-                    base.Clear(); 
-                    //Clear interfaces
-                    if(li!=null) li.Clear();                                        
-                }
-
-                #region Execute
-
-                /// <summary>
-                /// Executes the lists in the chosen context.
-                /// </summary>
-                override public void Execute() {                    
-                    //Iterate activities
-                    base.Execute();                                        
-                    //Prune interfaces
-                    for(int i=0;i<li.Count;i++) { if(li[i]==null)li.RemoveAt(i--); }
-                    //Shortcut bool
-                    bool is_async = context == Context.Async;
-                    //Same of interfaces
-                    if(is_async)  timer.Restart();
-                    if(!is_async) ii=0;
-                    //Loop
-                    for(int i=0;i<li.Count;i++) {
-                        //Cast the interface based on the context.
-                        switch(context) {
-                            case Context.Update:      { IUpdateable      it = (IUpdateable)     li[ii]; it.OnUpdate();      } break;
-                            case Context.LateUpdate:  { ILateUpdateable  it = (ILateUpdateable) li[ii]; it.OnLateUpdate();  } break;
-                            case Context.Async:       { IAsyncUpdateable it = (IAsyncUpdateable)li[ii]; it.OnAsyncUpdate(); } break;
-                            case Context.FixedUpdate: { IFixedUpdateable it = (IFixedUpdateable)li[ii]; it.OnFixedUpdate(); } break;
-                        }
-                        //Same as above
-                        ii = (ii+1)%li.Count;
-                        if(is_async) if(timer.ElapsedMilliseconds>=asyncTimeSlice) break;
-                    }
-                }
-
-                #endregion
-
-            }
-
-            #endregion
-
-            /// <summary>
-            /// Internals.
-            /// </summary>
-            static internal System.Threading.Thread thread_loop;
-            internal ActivityList<IUpdateable>      lu;
-            internal ActivityList<ILateUpdateable>  llu;
-            internal ActivityList<IFixedUpdateable> lfu;
-            internal ActivityList<IAsyncUpdateable> lau;
-            internal List<Activity> lt;
-            internal List<Activity> ltq;            
-            internal float  thread_keep_alive_tick;            
-            internal bool   thread_kill_flag;
-
-            /// <summary>
-            /// CTOR
-            /// </summary>
-            protected void Awake() {
-                if(lu==null)  lu  = new ActivityList<IUpdateable>(Context.Update);
-                if(llu==null) llu = new ActivityList<ILateUpdateable>(Context.LateUpdate);
-                if(lfu==null) lfu = new ActivityList<IFixedUpdateable>(Context.FixedUpdate);
-                if(lau==null) lau = new ActivityList<IAsyncUpdateable>(Context.Async);
-                if(lt==null)  lt  = new List<Activity>();                
-                if(ltq==null) ltq = new List<Activity>();
-            }
-
-            /// <summary>
-            /// DTOR.
-            /// </summary>
-            internal void OnDestroy() {
-                Clear();   
-            }
-
-            /// <summary>
-            /// CTOR.
-            /// </summary>
-            internal void Start() {
-                //Assert thread on each start in case of scene changes and thread suspension or abortion
-                thread_keep_alive_tick = 0f;             
-                //Kill flag to cleanly stop the thread
-                thread_kill_flag       = false;
-            }
-
-            /// <summary>
-            /// Clears the manager execution.
-            /// </summary>
-            internal void Clear() {
-                if(lu!=null)  lu.Clear();
-                if(llu!=null) llu.Clear();
-                if(lfu!=null) lfu.Clear();
-                if(lau!=null) lau.Clear();
-                thread_kill_flag = true;
-            }
-
-            #region Add/Remove
-
-            /// <summary>
-            /// Returns the desired activity list by context
-            /// </summary>
-            /// <param name="p_context"></param>
-            /// <returns></returns>
-            internal ActivityList GetActivityList(Context p_context) {
-                switch(p_context) {
-                    case Context.Update:      return lu;
-                    case Context.LateUpdate:  return llu;
-                    case Context.FixedUpdate: return lfu;
-                    case Context.Async:       return lau;
-                }
-                return null;
-            }
-
-            /// <summary>
-            /// Adds a new activity node.
-            /// </summary>
-            /// <param name="p_activity"></param>
-            internal void AddActivity(Activity p_activity) {
-                Activity a = p_activity;
-                if(a==null)               return;
-                if(a.state != State.Idle) return;
-                a.state = State.Queued;
-                switch(a.context) {
-                    case Context.Update:      if(!lu.la.Contains(a))  lu.la.Add(a);  break;
-                    case Context.LateUpdate:  if(!llu.la.Contains(a)) llu.la.Add(a); break;
-                    case Context.FixedUpdate: if(!lfu.la.Contains(a)) lfu.la.Add(a); break;
-                    case Context.Async:       if(!lau.la.Contains(a)) lau.la.Add(a); break;
-                    //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way
-                    case Context.Thread:    { if(!ltq.Contains(a)) ltq.Add(a); AssertThread(); break; }
-                }
-            }
-
-            /// <summary>
-            /// Removes a executing node.
-            /// </summary>
-            /// <param name="p_activity"></param>
-            internal void RemoveActivity(Activity p_activity) {
-                Activity a = p_activity;
-                if(a==null)               return;                
-                if(a.state == State.Idle) return;                
-                int idx;
-                switch(a.context) {
-                    case Context.Update:      if(lu.la.Contains(a))  lu.la.Remove(a);  break;
-                    case Context.LateUpdate:  if(llu.la.Contains(a)) llu.la.Remove(a); break;
-                    case Context.FixedUpdate: if(lfu.la.Contains(a)) lfu.la.Remove(a); break;
-                    case Context.Async:       if(lau.la.Contains(a)) lau.la.Remove(a); break;
-                    //Threaded lists its better to null the element and allow removal during the synced execution of the thread
-                    case Context.Thread:      { 
-                        idx = lt.IndexOf(a);  if(idx>=0) lt[idx]  = null; 
-                        idx = ltq.IndexOf(a); if(idx>=0) ltq[idx] = null;
-                    }
-                    break;
-                }
-                a.OnStop();
-            }
-
-            /// <summary>
-            /// Adds an executing node
-            /// </summary>
-            /// <param name="p_interface"></param>
-            internal void AddInterface(object p_interface) {
-                if(p_interface==null) return;
-                if(p_interface is IUpdateable)      { IUpdateable     itf = (IUpdateable)      p_interface; if(!lu.li.Contains(itf))  lu.li.Add(itf);  }
-                if(p_interface is ILateUpdateable)  { ILateUpdateable itf = (ILateUpdateable)  p_interface; if(!llu.li.Contains(itf)) llu.li.Add(itf); }
-                if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable)p_interface; if(!lfu.li.Contains(itf)) lfu.li.Add(itf); }
-                if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable)p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
-            }
-
-            /// <summary>
-            /// Removes an executing node
-            /// </summary>
-            /// <param name="p_interface"></param>
-            internal void RemoveInterface(object p_interface) {
-                if(p_interface==null) return;
-                if(p_interface is IUpdateable)      { IUpdateable      itf = (IUpdateable)      p_interface; if(!lu.li.Contains(itf))  lu.li.Add(itf);  }
-                if(p_interface is ILateUpdateable)  { ILateUpdateable  itf = (ILateUpdateable)  p_interface; if(!llu.li.Contains(itf)) llu.li.Add(itf); }
-                if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable) p_interface; if(!lfu.li.Contains(itf)) lfu.li.Add(itf); }
-                if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable) p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
-            }
-
-            #endregion
-
-            #region Find
-
-            /// <summary>
-            /// Searches an activity by id.
-            /// </summary>
-            /// <param name="p_id"></param>
-            /// <returns></returns>
-            internal Activity Find(string p_id,Context p_context) {
-                //Local ref
-                Activity res = null;
-                //Shortcut bool
-                bool all_ctx = ((int)p_context)<0;
-                //Search threads if threaded or all ctxs
-                bool search_threads = p_context == Context.Thread ? true : all_ctx;
-                //Search thread nodes
-                if(p_context == Context.Thread) {
-                    m_id_query = p_id;
-                    //Search active nodes
-                    res = lt.Find(FindActivityById);
-                    //Search queued nodes if no result
-                    if(res==null) res = ltq.Find(FindActivityById);
-                    //Clear global search query
-                    m_id_query = "";
-                    //If thread only return
-                    if(p_context == Context.Thread) return res;
-                    //If there is a result return
-                    if(res!=null) return res;
-                }
-                //Try fetch the activity list
-                ActivityList la = GetActivityList(p_context);
-                //If single context find in the single list
-                if(la!=null) return la.Find(p_id);
-                //If not search in all
-                res = lu.Find(p_id);  if(res!=null) return res;
-                res = llu.Find(p_id); if(res!=null) return res;
-                res = lfu.Find(p_id); if(res!=null) return res;
-                res = lau.Find(p_id); if(res!=null) return res;
-                //Return whatever
-                return res;
-            }
-            /// <summary>
-            /// Helpers for Find/FindAll
-            /// </summary>
-            private string m_id_query;
-            private bool FindActivityById(Activity it) { return it==null ? false : (it.id == m_id_query); }
-            
-            /// <summary>
-            /// Finds an activity searching all contexts.
-            /// </summary>
-            /// <param name="p_id"></param>
-            /// <returns></returns>
-            internal Activity Find(string p_id) { return Find(p_id,(Context)(-1)); }
-
-            /// <summary>
-            /// Finds all activities, matching the id.
-            /// </summary>
-            /// <param name="p_id"></param>
-            /// <param name="p_context"></param>
-            /// <returns></returns>
-            internal List<Activity> FindAll(string p_id,Context p_context) {
-                //Local ref
-                List<Activity> res = new List<Activity>();
-                //Shortcut bool
-                bool all_ctx = ((int)p_context)<0;
-                //Search threads if threaded or all ctxs
-                bool search_threads = p_context == Context.Thread ? true : all_ctx;
-                //Search thread nodes
-                if(search_threads) {
-                    m_id_query = p_id;
-                    //Search active nodes
-                    if(lt!=null) res.AddRange(lt.FindAll(FindActivityById));
-                    //Search queued nodes
-                    if(ltq!=null)res.AddRange(ltq.FindAll(FindActivityById));
-                    //Clear global search query
-                    m_id_query = "";
-                    //If thread only return
-                    if(p_context == Context.Thread) return res;
-                }
-                //Try fetch the activity list
-                ActivityList la = GetActivityList(p_context);
-                //If single context find in the single list
-                if(la!=null) { res.AddRange(la.FindAll(p_id)); return res; }
-                //If not search in all
-                res.AddRange(lu.FindAll(p_id));  
-                res.AddRange(llu.FindAll(p_id)); 
-                res.AddRange(lfu.FindAll(p_id)); 
-                res.AddRange(lau.FindAll(p_id)); 
-                //Return results
-                return res;
-            }
-
-            /// <summary>
-            /// Searches all activities in all contexts.
-            /// </summary>
-            /// <param name="p_id"></param>
-            /// <returns></returns>
-            internal List<Activity> FindAll(string p_id) { return FindAll(p_id,(Context)(-1)); }
-
-            #endregion
-
-            #region Loops
-
-            /// <summary>
-            /// Asserts the lifetime of the thread running the thread loop nodes.
-            /// </summary>
-            internal void AssertThread() {
-                //If kill switch skip
-                if(thread_kill_flag)             return;
-                //If no nodes skip
-                if(lt.Count<=0) if(ltq.Count<=0) return;
-                //If thread active skips
-                if(thread_loop!=null) if(thread_loop.ThreadState == System.Threading.ThreadState.Running) return;
-                //Create and start the thread
-                thread_loop = new System.Threading.Thread(
-                delegate() { 
-                    while(true) {
-                        //If kill thread clear all and break out, reset the flag
-                        if(thread_kill_flag) { lt.Clear(); ltq.Clear(); thread_kill_flag=false; break; }
-                        //Execute all nodes
-                        ThreadUpdate();
-                        //Sleep 0 to yield CPU if possible
-                        System.Threading.Thread.Sleep(0);
-                        //Stop the thread if no nodes
-                        if(lt.Count<=0) if(ltq.Count<=0) break;
-                    }
-                    thread_loop=null;
-                });
-                thread_loop.Name = "activity-thread";
-                thread_loop.Start();
-                
-            }
-
-            /// <summary>
-            /// Update Loop
-            /// </summary>
-            internal void Update() {
-                lu.Execute();
-                lau.Execute();
-                //Check health state of threading each 2s
-                if(thread_keep_alive_tick<=0) { AssertThread(); thread_keep_alive_tick=2f; }
-                thread_keep_alive_tick-=Time.unscaledDeltaTime;
-            }
-
-            /// <summary>
-            /// FixedUpdate Loop
-            /// </summary>
-            internal void FixedUpdate() { lfu.Execute();  }
-
-            /// <summary>
-            /// LateUpdate Loop
-            /// </summary>
-            internal void LateUpdate()  { llu.Execute();  }
-
-            /// <summary>
-            /// ThreadUpdate Loop
-            /// </summary>
-            internal void ThreadUpdate() {
-                //Move new queued elements into the main list
-                for(int i=0;i<ltq.Count;i++) {
-                    //Skip invalids
-                    if(ltq[i]==null) continue;
-                    //Assert before insertion
-                    if(!lt.Contains(ltq[i]))lt.Add(ltq[i]);
-                }
-                //Clear the queue
-                ltq.Clear();
-                //Executes all threaded nodes.
-                for(int i=0;i<lt.Count;i++) {
-                    Activity it = lt[i];
-                    //Remove non active nodes
-                    if(it==null ? true : it.completed) { lt.RemoveAt(i--); continue; }
-                    //Step
-                    it.Execute();                    
-                }
-            }
-
-            #endregion
-
+            protected void Awake()      { handler.Awake();         }
+            internal void Start()       { m_handler.Start();       }
+            internal void Update()      { m_handler.Update();      }
+            internal void FixedUpdate() { m_handler.FixedUpdate(); }            
+            internal void LateUpdate()  { m_handler.LateUpdate();  }
+            internal void OnDestroy()   { if(m_handler!=null) m_handler.Clear(); }
         }
 
         /// <summary>
@@ -660,18 +168,18 @@ namespace UnityExt.Core {
         /// Adds activity for exection.
         /// </summary>
         /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
-        static public void Add(object p_node) { if(manager)manager.AddInterface(p_node); }
+        static public void Add(object p_node) { if(manager)manager.handler.AddInterface(p_node); }
 
         /// <summary>
         /// Removes the activity from exection.
         /// </summary>
         /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
-        static public void Remove(object p_node) { if(manager)manager.RemoveInterface(p_node); }
+        static public void Remove(object p_node) { if(manager)manager.handler.RemoveInterface(p_node); }
 
         /// <summary>
         /// Removes the activity from exection.
         /// </summary>
-        static public void Clear() { if(manager)manager.Clear(); }
+        static public void Clear() { if(manager)manager.handler.Clear(); }
 
         /// <summary>
         /// Searches for a single activity by id and context.
@@ -679,7 +187,7 @@ namespace UnityExt.Core {
         /// <param name="p_id">Activity id to search.</param>
         /// <param name="p_context">Specific context to be searched.</param>
         /// <returns>Activity found or null</returns>
-        static public Activity Find(string p_id,Context p_context) { if(manager) return manager.Find(p_id,p_context); return null; }
+        static public Activity Find(string p_id,Context p_context) { if(manager) return manager.handler.Find(p_id,p_context); return null; }
 
         /// <summary>
         /// Searches for a single activity by id in all contexts.
@@ -694,7 +202,7 @@ namespace UnityExt.Core {
         /// <param name="p_id">Activity id to search.</param>
         /// <param name="p_context">Specific context to be searched.</param>
         /// <returns>List of results or an empty list.</returns>
-        static public List<Activity> FindAll(string p_id,Context p_context) { List<Activity> res=null; if(manager) res = manager.FindAll(p_id,p_context); return res==null ? new List<Activity>() : res; }
+        static public List<Activity> FindAll(string p_id,Context p_context) { List<Activity> res=null; if(manager) res = manager.handler.FindAll(p_id,p_context); return res==null ? new List<Activity>() : res; }
 
         /// <summary>
         /// Searches for all activities matching the id in all contexts.
@@ -826,9 +334,9 @@ namespace UnityExt.Core {
         /// Helper task to use await.
         /// </summary>
         internal Task m_task;
-        internal CancellationTokenSource m_task_cancel;
         internal int  m_yield_ms;
-
+        internal CancellationTokenSource m_task_cancel;
+        
         /// <summary>
         /// Creates a new Activity.
         /// </summary>
@@ -867,13 +375,13 @@ namespace UnityExt.Core {
                 m_task = new Task(OnTaskCompleteDummy,m_task_cancel.Token);
             }
             m_yield_ms  = 0;
-            if(manager)manager.AddActivity(this);            
+            if(manager)manager.handler.AddActivity(this);            
         }
 
         /// <summary>
         /// Removes this activity from the execution pool.
         /// </summary>
-        public void Stop() { if(manager)manager.RemoveActivity(this); }
+        public void Stop() { if(manager)manager.handler.RemoveActivity(this); }
 
         /// <summary>
         /// Auxiliary method to validate if starting is allowed.
