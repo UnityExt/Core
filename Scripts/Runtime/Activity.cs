@@ -6,6 +6,10 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 namespace UnityExt.Core {
 
     #region Interfaces
@@ -48,6 +52,16 @@ namespace UnityExt.Core {
         /// Runs inside Monobehaviour.Update and only during the 'async-slice' duration per frame, so it can skip a few frames depending on the execution load.
         /// </summary>
         void OnAsyncUpdate(); 
+    }
+
+    /// <summary>
+    /// Interfaces for objects that wants to perform update loops inside a thread
+    /// </summary>
+    public interface IThreadUpdateable { 
+        /// <summary>
+        /// Runs inside a thread
+        /// </summary>
+        void OnThreadUpdate(); 
     }
 
     #endregion
@@ -116,9 +130,22 @@ namespace UnityExt.Core {
 
         #region class Manager
 
+        #if UNITY_EDITOR
+        [MenuItem("UnityExt/Debug/Activity/Test Activity")]
+        static protected void TestActivity() {
+            float t = (float)UnityEditor.EditorApplication.timeSinceStartup;
+            Activity.Run(delegate(Activity a) {
+                float e = (float)UnityEditor.EditorApplication.timeSinceStartup - t;
+                Debug.Log(e);
+                if(e>15f) return false;
+                return true;
+            });
+        }
+        #endif
+
         /// <summary>
         /// Behaviour to handle all activity  executions.
-        /// </summary>
+        /// </summary>        
         public class Manager : MonoBehaviour {
 
             /// <summary>
@@ -130,12 +157,27 @@ namespace UnityExt.Core {
             /// <summary>
             /// Unity Calls
             /// </summary>
-            protected void Awake()      { handler.Awake();         }
-            internal void Start()       { m_handler.Start();       }
-            internal void Update()      { m_handler.Update();      }
-            internal void FixedUpdate() { m_handler.FixedUpdate(); }            
-            internal void LateUpdate()  { m_handler.LateUpdate();  }
-            internal void OnDestroy()   { if(m_handler!=null) m_handler.Clear(); }
+            protected void Awake()       { handler.Awake();       }
+            internal void Start()        { handler.Start();       }
+            internal void Update()       { handler.Update();      }            
+            internal void FixedUpdate()  { handler.FixedUpdate(); }            
+            internal void LateUpdate()   { handler.LateUpdate();  }
+            internal void OnDestroy()    { if(m_handler!=null) { m_handler.Clear(); m_handler=null; }  }
+
+            #if UNITY_EDITOR
+            public   void EditorUpdate() { 
+                //Skip editor updates when playing
+                if(Application.isPlaying) return; 
+                //Update similarly as Mono.Update
+                handler.Update(); 
+                //If no nodes or during compiling destroy context
+                if(handler.IsEmpty() || EditorApplication.isCompiling) {
+                    EditorApplication.update -= EditorUpdate; 
+                    DestroyImmediate(gameObject); 
+                } 
+            }
+            #endif
+
         }
 
         /// <summary>
@@ -147,8 +189,32 @@ namespace UnityExt.Core {
                 if(!m_manager) m_manager = GameObject.FindObjectOfType<Manager>();
                 if(m_manager)  return m_manager;
                 GameObject g = new GameObject("activity-manager");
-                GameObject.DontDestroyOnLoad(g);
-                return m_manager = g.AddComponent<Manager>();
+                if(Application.isPlaying) GameObject.DontDestroyOnLoad(g);
+                m_manager = g.AddComponent<Manager>();
+                #if UNITY_EDITOR
+                //If not playing, an editor script or tool might want looping callbacks
+                if(!Application.isPlaying) {                     
+                    //Emulate Awake
+                    m_manager.handler.Awake();
+                    //Emulate Start
+                    m_manager.handler.Start();
+                    //Add a 'suffix' to easily see on hierarchy
+                    m_manager.name+="-editor";
+                    //Prevent state inconsistencies
+                    m_manager.hideFlags = HideFlags.DontSave;
+                    //Register method for update looping
+                    EditorApplication.update += manager.EditorUpdate;
+                    //Register for destroy context in case of playmode change
+                    EditorApplication.playModeStateChanged += 
+                    delegate(PlayModeStateChange m) {                         
+                        //Unregister callback
+                        EditorApplication.update -= m_manager.EditorUpdate; 
+                        //Destroy offline manager
+                        GameObject.DestroyImmediate(m_manager.gameObject); 
+                    };                    
+                }
+                #endif
+                return m_manager;
             }
         }
         static private Manager m_manager;
@@ -157,6 +223,11 @@ namespace UnityExt.Core {
         /// Execution time slice for async nodes.
         /// </summary>
         static public int asyncTimeSlice = 4;
+
+        /// <summary>
+        /// Maximum created threads for paralell nodes.
+        /// </summary>
+        static public int maxThreadCount = 3;
 
         #endregion
 
@@ -174,12 +245,12 @@ namespace UnityExt.Core {
         /// Removes the activity from exection.
         /// </summary>
         /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
-        static public void Remove(object p_node) { if(manager)manager.handler.RemoveInterface(p_node); }
+        static public void Remove(object p_node) { if(m_manager)m_manager.handler.RemoveInterface(p_node); }
 
         /// <summary>
         /// Removes the activity from exection.
         /// </summary>
-        static public void Clear() { if(manager)manager.handler.Clear(); }
+        static public void Clear() { if(m_manager)m_manager.handler.Clear(); }
 
         /// <summary>
         /// Searches for a single activity by id and context.

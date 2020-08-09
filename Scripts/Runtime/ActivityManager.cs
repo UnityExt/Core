@@ -1,10 +1,9 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using SCG = System.Collections.Generic;
+using System.Threading;
 
 namespace UnityExt.Core {
 
@@ -37,11 +36,6 @@ namespace UnityExt.Core {
                 public Activity.Context context;
 
                 /// <summary>
-                /// Time slice in ms
-                /// </summary>
-                public int timeSlice = 4; 
-
-                /// <summary>
                 /// Timer for async loops.
                 /// </summary>
                 public System.Diagnostics.Stopwatch timer;
@@ -55,18 +49,31 @@ namespace UnityExt.Core {
                 /// CTOR.
                 /// </summary>
                 public List(Activity.Context p_context) {
-                la= new System.Collections.Generic.List<Activity>(1000);
+                    la = new System.Collections.Generic.List<Activity>(15000);
                     ia = 0;
                     context = p_context;
-                    timer   = context == Activity.Context.Async ? new System.Diagnostics.Stopwatch() : null;
+                    timer   = context == Activity.Context.Async ? new System.Diagnostics.Stopwatch() : null;                    
+                }
+
+                /// <summary>
+                /// Check if the execution pool contains elements.
+                /// </summary>
+                /// <returns></returns>
+                virtual public bool IsEmpty() {
+                    return la.Count<=0;
                 }
 
                 /// <summary>
                 /// Clear the lists
                 /// </summary>
                 virtual public void Clear() {
-                    if(la!=null) la.Clear();
-                    context = (Activity.Context)(-1);
+                    //Threads needs to null the element and handle inside thread context
+                    if(context == Activity.Context.Thread) {
+                        if(la!=null) for(int i=0;i<la.Count;i++) la[i]=null;
+                    }
+                    else {
+                        if(la!=null) la.Clear();
+                    }
                     if(timer!=null) timer.Stop();
                 }
 
@@ -112,7 +119,13 @@ namespace UnityExt.Core {
                 /// </summary>
                 virtual public void Execute() {
                     //Prune activities
-                    for(int i=0;i<la.Count;i++) { if(la[i]==null ? true : la[i].completed)la.RemoveAt(i--); }
+                    for(int i=0;i<la.Count;i++) { 
+                        if(i<0)         break;
+                        if(i>=la.Count) break;
+                        if(la[i]==null ? true : la[i].completed) {                            
+                            if(i>=0)if(i<la.Count)la.RemoveAt(i--);
+                        }
+                    }
                     //Shortcut bool
                     bool is_async = context == Activity.Context.Async;
                     //If async prepare timer
@@ -122,17 +135,18 @@ namespace UnityExt.Core {
                     //Iterate across the list bounds
                     for(int i=0;i<la.Count;i++) {
                         //If async check timer slice limit and break out
-                        if(is_async) if(timer.ElapsedMilliseconds>=timeSlice) break;
+                        if(is_async) if(timer.ElapsedMilliseconds>=Activity.asyncTimeSlice) break;
                         //Use iterator for async cases
-                        Activity it = la[ia];
+                        Activity it = ia<0 ? null : (ia>=la.Count ? null : la[ia]);
                         //Check if node can be executed
                         bool is_valid = it==null ? false : !it.completed;                        
                         //Steps the activity if valid
-                        if(is_valid) it.Execute();                        
+                        if(is_valid) it.Execute();        
+                        //Range check
+                        int c = la.Count;
                         //Increment-loop the iterator (async might be mid iteration)
-                        ia = (ia+1)%la.Count;                        
+                        ia = c<=0 ? 0 : ((ia+1)%c);
                     }
-
                 }
 
                 #endregion
@@ -148,7 +162,7 @@ namespace UnityExt.Core {
                 /// <summary>
                 /// Interface nodes
                 /// </summary>
-                public System.Collections.Generic.List<T> li;
+                public SCG.List<T> li;
 
                 /// <summary>
                 /// Current iterator for interfaces
@@ -159,9 +173,15 @@ namespace UnityExt.Core {
                 /// CTOR
                 /// </summary>
                 public List(Activity.Context p_context) : base(p_context) {
-                    li = new System.Collections.Generic.List<T>(1000);
+                    li = new SCG.List<T>(5000);
                     ii = 0;                    
                 }
+
+                /// <summary>
+                /// Check if this list is totally empty.
+                /// </summary>
+                /// <returns></returns>
+                override public bool IsEmpty() { return base.IsEmpty() ? li.Count<=0 : false; }
 
                 /// <summary>
                 /// Clear this execution list.
@@ -169,8 +189,13 @@ namespace UnityExt.Core {
                 override public void Clear() {
                     //Clear activities
                     base.Clear(); 
-                    //Clear interfaces
-                    if(li!=null) li.Clear();                                        
+                    //Threads needs to null the element and handle inside thread context
+                    if(context == Activity.Context.Thread) {
+                        if(li!=null) for(int i=0;i<li.Count;i++) li[i]=default(T);
+                    }
+                    else {
+                        if(li!=null) li.Clear();
+                    }                    
                 }
 
                 #region Execute
@@ -182,7 +207,12 @@ namespace UnityExt.Core {
                     //Iterate activities
                     base.Execute();                                        
                     //Prune interfaces
-                    for(int i=0;i<li.Count;i++) { if(li[i]==null)li.RemoveAt(i--); }
+                    for(int i=0;i<li.Count;i++) { 
+                        if(i<0) continue;
+                        if(i>=li.Count) break;
+                        if(li[i]!=null) continue;
+                        if(i>=0)if(i<li.Count)li.RemoveAt(i--); 
+                    }
                     //Shortcut bool
                     bool is_async = context == Activity.Context.Async;
                     //Same of interfaces
@@ -190,16 +220,21 @@ namespace UnityExt.Core {
                     if(!is_async) ii=0;
                     //Loop
                     for(int i=0;i<li.Count;i++) {
+                        object li_it = ii<0 ? default(T) : (ii>=li.Count ? default(T) : li[ii]);
+                        //Skip invalid
+                        if(li_it==null) continue;                        
                         //Cast the interface based on the context.
                         switch(context) {
-                            case Activity.Context.Update:      { IUpdateable      it = (IUpdateable)     li[ii]; it.OnUpdate();      } break;
-                            case Activity.Context.LateUpdate:  { ILateUpdateable  it = (ILateUpdateable) li[ii]; it.OnLateUpdate();  } break;
-                            case Activity.Context.Async:       { IAsyncUpdateable it = (IAsyncUpdateable)li[ii]; it.OnAsyncUpdate(); } break;
-                            case Activity.Context.FixedUpdate: { IFixedUpdateable it = (IFixedUpdateable)li[ii]; it.OnFixedUpdate(); } break;
+                            case Activity.Context.Update:      { IUpdateable       it = (IUpdateable)      li_it; if(it!=null)it.OnUpdate();       } break;
+                            case Activity.Context.LateUpdate:  { ILateUpdateable   it = (ILateUpdateable)  li_it; if(it!=null)it.OnLateUpdate();   } break;
+                            case Activity.Context.Async:       { IAsyncUpdateable  it = (IAsyncUpdateable) li_it; if(it!=null)it.OnAsyncUpdate();  } break;
+                            case Activity.Context.FixedUpdate: { IFixedUpdateable  it = (IFixedUpdateable) li_it; if(it!=null)it.OnFixedUpdate();  } break;
+                            case Activity.Context.Thread:      { IThreadUpdateable it = (IThreadUpdateable)li_it; if(it!=null)it.OnThreadUpdate(); } break;
                         }
                         //Same as above
-                        ii = (ii+1)%li.Count;
-                        if(is_async) if(timer.ElapsedMilliseconds>=timeSlice) break;
+                        int c = li.Count;
+                        ii = c<=0 ? 0 : (ii+1)%c;
+                        if(is_async) if(timer.ElapsedMilliseconds>=Activity.asyncTimeSlice) break;
                     }
                 }
 
@@ -211,16 +246,23 @@ namespace UnityExt.Core {
 
             /// <summary>
             /// Internals.
+            /// </summary>            
+            internal List<IUpdateable>         lu;
+            internal List<ILateUpdateable>     llu;
+            internal List<IFixedUpdateable>    lfu;
+            internal List<IAsyncUpdateable>    lau;
+            internal List<IThreadUpdateable>[] lt;
+            /// <summary>
+            /// Internals threading.
             /// </summary>
-            internal System.Threading.Thread thread_loop;
-            internal List<IUpdateable>      lu;
-            internal List<ILateUpdateable>  llu;
-            internal List<IFixedUpdateable> lfu;
-            internal List<IAsyncUpdateable> lau;
-            internal System.Collections.Generic.List<Activity> lt;
-            internal System.Collections.Generic.List<Activity> ltq;            
+            internal Thread[] thdl;            
+            internal SCG.List<Activity> ltq_a;
+            internal SCG.List<IThreadUpdateable> ltq_i;
             internal float  thread_keep_alive_tick;            
             internal bool   thread_kill_flag;
+            internal int    thread_queue_target_a;
+            internal int    thread_queue_target_i;
+            internal int    thread_assert_target;
 
             /// <summary>
             /// CTOR
@@ -229,9 +271,18 @@ namespace UnityExt.Core {
                 if(lu==null)  lu  = new List<IUpdateable>(Activity.Context.Update);
                 if(llu==null) llu = new List<ILateUpdateable>(Activity.Context.LateUpdate);
                 if(lfu==null) lfu = new List<IFixedUpdateable>(Activity.Context.FixedUpdate);
-                if(lau==null) lau = new List<IAsyncUpdateable>(Activity.Context.Async);
-                if(lt==null)  lt  = new System.Collections.Generic.List<Activity>();                
-                if(ltq==null) ltq = new System.Collections.Generic.List<Activity>();
+                if(lau==null) lau = new List<IAsyncUpdateable>(Activity.Context.Async);                
+                if(ltq_a==null) ltq_a = new SCG.List<Activity>();                
+                if(ltq_i==null) ltq_i = new SCG.List<IThreadUpdateable>();
+                //Init threads based on max allowed threads.
+                int max_thread = Activity.maxThreadCount;
+                if(lt==null)   lt   = new List<IThreadUpdateable>[max_thread];
+                for(int i=0;i<lt.Length;i++) lt[i] = new List<IThreadUpdateable>(Activity.Context.Thread);
+                if(thdl==null) thdl = new Thread[max_thread];
+                //Index of the thread to add nodes next
+                thread_queue_target_a = 0;
+                thread_queue_target_i = 0;
+                thread_assert_target  = 0;
             }
 
             /// <summary>
@@ -245,6 +296,21 @@ namespace UnityExt.Core {
             }
 
             /// <summary>
+            /// Check is this manager is without any node.
+            /// </summary>
+            /// <returns></returns>
+            public bool IsEmpty() {
+                if(lu!=null)  if(!lu.IsEmpty())  return false;
+                if(llu!=null) if(!llu.IsEmpty()) return false;
+                if(lfu!=null) if(!lfu.IsEmpty()) return false;
+                if(lau!=null) if(!lau.IsEmpty()) return false;                
+                for(int i=0;i<lt.Length;i++) { if(!lt[i].IsEmpty()) return false; }
+                if(ltq_a!=null) if(ltq_a.Count>0) return false;
+                if(ltq_i!=null) if(ltq_i.Count>0) return false;
+                return true;
+            }
+
+            /// <summary>
             /// Clears the manager execution.
             /// </summary>
             public void Clear() {
@@ -252,6 +318,9 @@ namespace UnityExt.Core {
                 if(llu!=null) llu.Clear();
                 if(lfu!=null) lfu.Clear();
                 if(lau!=null) lau.Clear();
+                for(int i=0;i<lt.Length;i++) { lt[i].Clear(); }
+                if(ltq_a!=null) ltq_a.Clear();
+                if(ltq_i!=null) ltq_i.Clear();
                 thread_kill_flag = true;
             }
 
@@ -267,7 +336,7 @@ namespace UnityExt.Core {
                     case Activity.Context.Update:      return lu;
                     case Activity.Context.LateUpdate:  return llu;
                     case Activity.Context.FixedUpdate: return lfu;
-                    case Activity.Context.Async:       return lau;
+                    case Activity.Context.Async:       return lau;                    
                 }
                 return null;
             }
@@ -287,7 +356,13 @@ namespace UnityExt.Core {
                     case Activity.Context.FixedUpdate: if(!lfu.la.Contains(a)) lfu.la.Add(a); break;
                     case Activity.Context.Async:       if(!lau.la.Contains(a)) lau.la.Add(a); break;
                     //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way
-                    case Activity.Context.Thread:    { if(!ltq.Contains(a)) ltq.Add(a); AssertThread(); break; }
+                    case Activity.Context.Thread:    {                        
+                        if(ltq_a.Contains(a)) break;
+                        //Add and trigger the thread creation
+                        ltq_a.Add(a); 
+                        AssertThread(); 
+                        break; 
+                    }
                 }
             }
 
@@ -297,8 +372,7 @@ namespace UnityExt.Core {
             /// <param name="p_activity"></param>
             public void RemoveActivity(Activity p_activity) {
                 Activity a = p_activity;
-                if(a==null)               return;                
-                if(a.state == Activity.State.Idle) return;                
+                if(a==null) return;                
                 int idx;
                 switch(a.context) {
                     case Activity.Context.Update:      if(lu.la.Contains(a))  lu.la.Remove(a);  break;
@@ -307,8 +381,17 @@ namespace UnityExt.Core {
                     case Activity.Context.Async:       if(lau.la.Contains(a)) lau.la.Remove(a); break;
                     //Threaded lists its better to null the element and allow removal during the synced execution of the thread
                     case Activity.Context.Thread:      { 
-                        idx = lt.IndexOf(a);  if(idx>=0) lt[idx]  = null; 
-                        idx = ltq.IndexOf(a); if(idx>=0) ltq[idx] = null;
+                        //Search for the activity and null it for next pruning
+                        for(int i=0;i<lt.Length;i++) {
+                            List it = lt[i];
+                            idx = it.la.IndexOf(a); 
+                            if(idx<0) continue;
+                            it.la[idx] = null;                             
+                            break;
+                        }                        
+                        //Search the queue too
+                        idx = ltq_a.IndexOf(a); 
+                        if(idx>=0) ltq_a[idx] = null;
                     }
                     break;
                 }
@@ -325,6 +408,14 @@ namespace UnityExt.Core {
                 if(p_interface is ILateUpdateable)  { ILateUpdateable itf = (ILateUpdateable)  p_interface; if(!llu.li.Contains(itf)) llu.li.Add(itf); }
                 if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable)p_interface; if(!lfu.li.Contains(itf)) lfu.li.Add(itf); }
                 if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable)p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
+                if(p_interface is IThreadUpdateable) {
+                    IThreadUpdateable itf = (IThreadUpdateable)p_interface;
+                    //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way                    
+                    if(ltq_i.Contains(itf)) return;
+                    //Add and trigger the thread creation
+                    ltq_i.Add(itf); 
+                    AssertThread();
+                }
             }
 
             /// <summary>
@@ -337,6 +428,23 @@ namespace UnityExt.Core {
                 if(p_interface is ILateUpdateable)  { ILateUpdateable  itf = (ILateUpdateable)  p_interface; if(!llu.li.Contains(itf)) llu.li.Add(itf); }
                 if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable) p_interface; if(!lfu.li.Contains(itf)) lfu.li.Add(itf); }
                 if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable) p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
+                if(p_interface is IThreadUpdateable) {
+                    IThreadUpdateable itf = (IThreadUpdateable)p_interface;
+                    int idx = -1;
+                    //Search for the interface and null it for next pruning
+                    for(int i=0;i<lt.Length;i++) {
+                        List<IThreadUpdateable> it = lt[i];
+                        idx = it.li.IndexOf(itf); 
+                        if(idx<0) continue;
+                        it.li[idx] = null;                             
+                        break;
+                    }             
+                    //Skip if found
+                    if(idx>=0) return;
+                    //Search the queue too
+                    idx = ltq_i.IndexOf(itf); 
+                    if(idx>=0) ltq_i[idx] = null;
+                }
             }
 
             #endregion
@@ -358,10 +466,15 @@ namespace UnityExt.Core {
                 //Search thread nodes
                 if(p_context == Activity.Context.Thread) {
                     m_id_query = p_id;
-                    //Search active nodes
-                    res = lt.Find(FindActivityById);
+                    for(int i=0;i<lt.Length;i++) {
+                        List it = lt[i];
+                        //Search active node
+                        res = it.Find(m_id_query);
+                        //If found break
+                        if(res!=null) break;
+                    }                    
                     //Search queued nodes if no result
-                    if(res==null) res = ltq.Find(FindActivityById);
+                    if(res==null) res = ltq_a.Find(FindActivityById);
                     //Clear global search query
                     m_id_query = "";
                     //If thread only return
@@ -411,9 +524,13 @@ namespace UnityExt.Core {
                 if(search_threads) {
                     m_id_query = p_id;
                     //Search active nodes
-                    if(lt!=null) res.AddRange(lt.FindAll(FindActivityById));
+                    for(int i=0;i<lt.Length;i++) {
+                        List it = lt[i];
+                        //Search active nodes
+                        res.AddRange(it.FindAll(m_id_query));                        
+                    }                      
                     //Search queued nodes
-                    if(ltq!=null)res.AddRange(ltq.FindAll(FindActivityById));
+                    if(ltq_a!=null)res.AddRange(ltq_a.FindAll(FindActivityById));
                     //Clear global search query
                     m_id_query = "";
                     //If thread only return
@@ -437,40 +554,60 @@ namespace UnityExt.Core {
             /// </summary>
             /// <param name="p_id"></param>
             /// <returns></returns>
-            public System.Collections.Generic.List<Activity> FindAll(string p_id) { return FindAll(p_id,(Activity.Context)(-1)); }
+            public SCG.List<Activity> FindAll(string p_id) { return FindAll(p_id,(Activity.Context)(-1)); }
 
             #endregion
 
             #region Loops
 
             /// <summary>
+            /// Assert all threads.
+            /// </summary>
+            protected void AssertThread() {                 
+                //Assert threads a bit per frame
+                AssertThread(thread_assert_target);
+                thread_assert_target = (thread_assert_target+1)%lt.Length;
+            }
+
+            /// <summary>
             /// Asserts the lifetime of the thread running the thread loop nodes.
             /// </summary>
-            protected void AssertThread() {
+            protected void AssertThread(int p_index) {
                 //If kill switch skip
-                if(thread_kill_flag)             return;
-                //If no nodes skip
-                if(lt.Count<=0) if(ltq.Count<=0) return;
-                //If thread active skips
-                if(thread_loop!=null) if(thread_loop.ThreadState == System.Threading.ThreadState.Running) return;
+                if(thread_kill_flag) return;
+                //Thread index
+                int idx = p_index;
+                List<IThreadUpdateable> l = lt[idx];
+                //If no nodes executing and no nodes queued skip
+                if(l.IsEmpty()) if(ltq_a.Count<=0) if(ltq_i.Count<=0) return;
+                //Fetch thread and its state
+                Thread  thd   = thdl[idx];                
+                int     thd_s = thd==null ? -1 : (int)thd.ThreadState;
+                //If thread active/sleep skips
+                if(thd!=null) {
+                    if(thd_s == 0)  return; //Running 
+                    if(thd_s == 32) return; //WaitSleepJoin
+                }
                 //Create and start the thread
-                thread_loop = new System.Threading.Thread(
+                thd = new System.Threading.Thread(
                 delegate() { 
                     while(true) {
                         //If kill thread clear all and break out, reset the flag
-                        if(thread_kill_flag) { lt.Clear(); ltq.Clear(); thread_kill_flag=false; break; }
+                        if(thread_kill_flag) break;
+                        //If current queuing slot
+                        bool will_queue = idx == thread_queue_target_a;
                         //Execute all nodes
-                        ThreadUpdate();
+                        ThreadUpdate(l,idx);
                         //Sleep 0 to yield CPU if possible
                         System.Threading.Thread.Sleep(0);
                         //Stop the thread if no nodes
-                        if(lt.Count<=0) if(ltq.Count<=0) break;
+                        if(l.IsEmpty()) if(ltq_a.Count<=0) if(ltq_i.Count<=0) break;
                     }
-                    thread_loop=null;
+                    thdl[idx]=null;                    
                 });
-                thread_loop.Name = "activity-thread";
-                thread_loop.Start();
-                
+                thd.Name = "activity-thread-"+p_index;
+                thdl[idx] = thd;
+                thd.Start();                
             }
 
             /// <summary>
@@ -479,8 +616,8 @@ namespace UnityExt.Core {
             public void Update() {
                 lu.Execute();
                 lau.Execute();
-                //Check health state of threading each 2s
-                if(thread_keep_alive_tick<=0) { AssertThread(); thread_keep_alive_tick=2f; }
+                //Check health state of threading each 0.1s
+                if(thread_keep_alive_tick<=0) { AssertThread(); thread_keep_alive_tick=0.1f; }
                 thread_keep_alive_tick-=Time.unscaledDeltaTime;
             }
 
@@ -497,24 +634,45 @@ namespace UnityExt.Core {
             /// <summary>
             /// ThreadUpdate Loop
             /// </summary>
-            protected void ThreadUpdate() {
-                //Move new queued elements into the main list
-                for(int i=0;i<ltq.Count;i++) {
-                    //Skip invalids
-                    if(ltq[i]==null) continue;
-                    //Assert before insertion
-                    if(!lt.Contains(ltq[i]))lt.Add(ltq[i]);
+            internal void ThreadUpdate(List<IThreadUpdateable> p_list,int p_index) {
+                //Fetch the update list
+                List<IThreadUpdateable> l = p_list;
+                //Move new queued activity into the main list
+                if(p_index == thread_queue_target_a) {
+                    //Insert activities from queue
+                    while(ltq_a.Count>0) {
+                        //Dequeue elements until insertion
+                        Activity a = ltq_a[0];
+                        ltq_a.RemoveAt(0);
+                        //Skip invalid
+                        if(a==null) continue;
+                        //Skip invalid
+                        if(l.la.Contains(a)) continue;
+                        //Add the element and increment-loop the next thread
+                        l.la.Add(a);
+                        thread_queue_target_a = (thread_queue_target_a+1)%lt.Length;
+                        break;
+                    }
                 }
-                //Clear the queue
-                ltq.Clear();
-                //Executes all threaded nodes.
-                for(int i=0;i<lt.Count;i++) {
-                    Activity it = lt[i];
-                    //Remove non active nodes
-                    if(it==null ? true : it.completed) { lt.RemoveAt(i--); continue; }
-                    //Step
-                    it.Execute();                    
-                }
+                //Move new queued interfaces into the main list
+                if(p_index == thread_queue_target_i) {
+                    //Insert interfaces from queue
+                    while(ltq_i.Count>0) {
+                        //Dequeue elements until insertion
+                        IThreadUpdateable itf = ltq_i[0];
+                        ltq_i.RemoveAt(0);
+                        //Skip invalid
+                        if(itf==null) continue;
+                        //Skip invalid
+                        if(l.li.Contains(itf)) continue;
+                        //Add the element and increment-loop the next thread
+                        l.li.Add(itf);
+                        thread_queue_target_i = (thread_queue_target_i+1)%lt.Length;
+                        break;
+                    }
+                }                                
+                //Executes threaded nodes.
+                l.Execute();                
             }
 
             #endregion
