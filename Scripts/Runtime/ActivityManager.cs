@@ -72,7 +72,11 @@ namespace UnityExt.Core {
                         if(la!=null) for(int i=0;i<la.Count;i++) la[i]=null;
                     }
                     else {
-                        if(la!=null) la.Clear();
+                        if(la!=null) {
+                            //Notify running activities for stopping
+                            for(int i=0;i<la.Count;i++) if(la[i]!=null) la[i].OnStop();
+                            la.Clear();
+                        }
                     }
                     if(timer!=null) timer.Stop();
                 }
@@ -126,6 +130,8 @@ namespace UnityExt.Core {
                             if(i>=0)if(i<la.Count)la.RemoveAt(i--);
                         }
                     }
+                    //Skip if empty
+                    if(la.Count<=0) return;
                     //Shortcut bool
                     bool is_async = context == Activity.Context.Async;
                     //If async prepare timer
@@ -213,6 +219,8 @@ namespace UnityExt.Core {
                         if(li[i]!=null) continue;
                         if(i>=0)if(i<li.Count)li.RemoveAt(i--); 
                     }
+                    //Skip if empty
+                    if(li.Count<=0) return;
                     //Shortcut bool
                     bool is_async = context == Activity.Context.Async;
                     //Same of interfaces
@@ -292,7 +300,7 @@ namespace UnityExt.Core {
                 //Assert thread on each start in case of scene changes and thread suspension or abortion
                 thread_keep_alive_tick = 0f;             
                 //Kill flag to cleanly stop the thread
-                thread_kill_flag       = false;
+                thread_kill_flag = false;
             }
 
             /// <summary>
@@ -333,6 +341,8 @@ namespace UnityExt.Core {
             /// <returns></returns>
             internal List GetActivityList(Activity.Context p_context) {
                 switch(p_context) {
+                    case Activity.Context.Job:
+                    case Activity.Context.JobAsync:
                     case Activity.Context.Update:      return lu;
                     case Activity.Context.LateUpdate:  return llu;
                     case Activity.Context.FixedUpdate: return lfu;
@@ -347,10 +357,15 @@ namespace UnityExt.Core {
             /// <param name="p_activity"></param>
             public void AddActivity(Activity p_activity) {
                 Activity a = p_activity;
+                //Skip invalid
                 if(a==null)               return;
-                if(a.state != Activity.State.Idle) return;
+                //Only accept correctly stopped tasks
+                if(a.state==Activity.State.Running) { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already running."); return; }
+                if(a.state==Activity.State.Queued)  { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already queued.");  return; }
                 a.state = Activity.State.Queued;
                 switch(a.context) {
+                    case Activity.Context.Job:
+                    case Activity.Context.JobAsync:
                     case Activity.Context.Update:      if(!lu.la.Contains(a))  lu.la.Add(a);  break;
                     case Activity.Context.LateUpdate:  if(!llu.la.Contains(a)) llu.la.Add(a); break;
                     case Activity.Context.FixedUpdate: if(!lfu.la.Contains(a)) lfu.la.Add(a); break;
@@ -372,9 +387,15 @@ namespace UnityExt.Core {
             /// <param name="p_activity"></param>
             public void RemoveActivity(Activity p_activity) {
                 Activity a = p_activity;
+                //Skip invalid
                 if(a==null) return;                
+                //Only accept active/running
+                if(a.state==Activity.State.Complete) { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already completed."); return; }
+                if(a.state==Activity.State.Stopped)  { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already stopped.");   return; }
                 int idx;
                 switch(a.context) {
+                    case Activity.Context.Job:
+                    case Activity.Context.JobAsync:
                     case Activity.Context.Update:      if(lu.la.Contains(a))  lu.la.Remove(a);  break;
                     case Activity.Context.LateUpdate:  if(llu.la.Contains(a)) llu.la.Remove(a); break;
                     case Activity.Context.FixedUpdate: if(lfu.la.Contains(a)) lfu.la.Remove(a); break;
@@ -412,7 +433,7 @@ namespace UnityExt.Core {
                     IThreadUpdateable itf = (IThreadUpdateable)p_interface;
                     //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way                    
                     if(ltq_i.Contains(itf)) return;
-                    //Add and trigger the thread creation
+                    //Add and trigger the thread creation if not created
                     ltq_i.Add(itf); 
                     AssertThread();
                 }
@@ -443,7 +464,7 @@ namespace UnityExt.Core {
                     if(idx>=0) return;
                     //Search the queue too
                     idx = ltq_i.IndexOf(itf); 
-                    if(idx>=0) ltq_i[idx] = null;
+                    if(idx>=0) if(idx<ltq_i.Count) ltq_i[idx] = null;
                 }
             }
 
@@ -605,9 +626,9 @@ namespace UnityExt.Core {
                     }
                     thdl[idx]=null;                    
                 });
-                thd.Name = "activity-thread-"+p_index;
+                thd.Name = "activity-thread-"+idx;
                 thdl[idx] = thd;
-                thd.Start();                
+                thd.Start();                                
             }
 
             /// <summary>

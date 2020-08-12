@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Unity.Jobs;
+using System.Reflection;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -64,13 +66,31 @@ namespace UnityExt.Core {
         void OnThreadUpdate(); 
     }
 
+    /// <summary>
+    /// Interface that helps job instances to be notified before and after execution to perform data management.
+    /// </summary>
+    public interface IJobComponent {
+        /// <summary>
+        /// Method called before either Run or Schedule in main thread.
+        /// </summary>        
+        void OnInit();
+        /// <summary>
+        /// Method called after either Run or Schedule in main thread.
+        /// </summary>        
+        void OnComplete();
+        /// <summary>
+        /// Method called after the activity is complete or stopped and left the execution pool.
+        /// </summary>        
+        void OnDestroy();
+    }
+
     #endregion
 
     /// <summary>
     /// Class that implements any async activity/processing.
     /// It can run in different contexts inside unity (mainthread) or separate thread, offering an abstraction layer Monobehaviour/Thread agnostic.
     /// </summary>
-    public class Activity : INotifyCompletion  {
+    public class Activity : INotifyCompletion {
 
         #region enum Context
 
@@ -97,7 +117,15 @@ namespace UnityExt.Core {
             /// <summary>
             /// Runs inside a thread, watch out to not use Unity API elements inside it.
             /// </summary>
-            Thread
+            Thread,
+            /// <summary>
+            /// Runs the job passed as parameter in a loop and using schedule
+            /// </summary>
+            JobAsync,
+            /// <summary>
+            /// Runs the job passed as parameter in a loop and using run
+            /// </summary>
+            Job
         }
 
         #endregion
@@ -123,7 +151,11 @@ namespace UnityExt.Core {
             /// <summary>
             /// Finished
             /// </summary>
-            Complete
+            Complete,
+            /// <summary>
+            /// Stopped
+            /// </summary>
+            Stopped
         }
 
         #endregion
@@ -141,7 +173,10 @@ namespace UnityExt.Core {
                 return true;
             });
         }
+
         #endif
+
+        
 
         /// <summary>
         /// Behaviour to handle all activity  executions.
@@ -235,6 +270,40 @@ namespace UnityExt.Core {
 
         #region CRUD
 
+        #region Create
+
+        /// <summary>
+        /// Auxiliary activity creation
+        /// </summary>
+        /// <param name="p_id"></param>
+        /// <param name="p_on_execute"></param>
+        /// <param name="p_on_complete"></param>
+        /// <param name="p_context"></param>
+        /// <returns></returns>
+        static internal Activity Create(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,Context p_context) {
+            Activity a = new Activity(p_id,p_context);
+            a.OnCompleteEvent = p_on_complete;
+            a.OnExecuteEvent  = p_on_execute;
+            return a;
+        }
+        /*
+        /// <summary>
+        /// Auxiliary activity creation
+        /// </summary>
+        /// <param name="p_id"></param>
+        /// <param name="p_on_execute"></param>
+        /// <param name="p_on_complete"></param>
+        /// <param name="p_context"></param>
+        /// <returns></returns>
+        static internal Activity Create<T>(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,bool p_async) where T : struct,IJob,IJobParallelFor {
+            Activity<T> a = new Activity<T>(p_id,p_async);
+            a.OnCompleteEvent = p_on_complete;
+            a.OnExecuteEvent  = p_on_execute;
+            return a;
+        }
+        //*/
+        #endregion
+
         /// <summary>
         /// Adds activity for exection.
         /// </summary>
@@ -286,20 +355,7 @@ namespace UnityExt.Core {
 
         #region Run / Loop
 
-        /// <summary>
-        /// Creates and starts an activity for constant loop execution.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
-        /// <param name="p_context">Execution context to run.</param>
-        /// <returns></returns>
-        static public Activity Run(string p_id,System.Predicate<Activity> p_callback,Context p_context) {
-            Activity a = new Activity(p_id,p_context);
-            a.OnCompleteEvent = null;
-            a.OnExecuteEvent  = p_callback;
-            a.Start();
-            return a;
-        }
+        #region Activity
 
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
@@ -307,65 +363,74 @@ namespace UnityExt.Core {
         /// <param name="p_id">Activity id for searching.</param>
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
         /// <param name="p_context">Execution context to run.</param>
-        /// <returns></returns>
-        static public Activity Run(System.Predicate<Activity> p_callback,Context p_context) { return Run("",p_callback,p_context); }
+        /// <returns>The running activity</returns>
+        static public Activity Run(string p_id,System.Predicate<Activity> p_callback,Context p_context) { Activity a = Create(p_id,p_callback,null,p_context); a.Start(); return a; }
+            
+        /// <summary>
+        /// Creates and starts an activity for constant loop execution.
+        /// </summary>
+        /// <param name="p_id">Activity id for searching.</param>
+        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
+        /// <param name="p_context">Execution context to run.</param>
+        /// <returns>The running activity</returns>
+        static public Activity Run(System.Predicate<Activity> p_callback,Context p_context) { Activity a = Create("",p_callback,null,p_context); a.Start(); return a; }
 
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
         /// </summary>
         /// <param name="p_id">Activity id for searching.</param>
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
-        /// <returns></returns>
-        static public Activity Run(string p_id,System.Predicate<Activity> p_callback) { return Run(p_id,p_callback,Context.Update); }
+        /// <returns>The running activity</returns>
+        static public Activity Run(string p_id,System.Predicate<Activity> p_callback) { Activity a = Create(p_id,p_callback,null,Context.Update); a.Start(); return a; }
 
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
         /// </summary>
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
-        /// <returns></returns>
-        static public Activity Run(System.Predicate<Activity> p_callback) { return Run("",p_callback,Context.Update); }
+        /// <returns>The running activity</returns>
+        static public Activity Run(System.Predicate<Activity> p_callback) { Activity a = Create("",p_callback,null,Context.Update); a.Start(); return a; }
+
+        #endregion
 
         #endregion
 
         #region Run / Once
 
-        /// <summary>
-        /// Creates and start a single execution activity.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <param name="p_context">Execution context.</param>
-        /// <returns></returns>
-        static public Activity Run(string p_id,System.Action<Activity> p_callback,Context p_context) {
-            Activity a = new Activity(p_id,p_context);
-            a.OnCompleteEvent = p_callback;
-            a.OnExecuteEvent  = null;
-            a.Start();
-            return a;
-        }
+        #region Activity
 
         /// <summary>
         /// Creates and start a single execution activity.
         /// </summary>
         /// <param name="p_id">Activity id for searching.</param>
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <returns></returns>
-        static public Activity Run(string p_id,System.Action<Activity> p_callback) { return Run(p_id,p_callback,Context.Update); }
+        /// <param name="p_context">Execution context.</param>
+        /// <returns>The running activity</returns>
+        static public Activity Run(string p_id,System.Action<Activity> p_callback,Context p_context) { Activity a = Create(p_id,null,p_callback,p_context); a.Start(); return a; }
+            
+        /// <summary>
+        /// Creates and start a single execution activity.
+        /// </summary>
+        /// <param name="p_id">Activity id for searching.</param>
+        /// <param name="p_callback">Callback for handling the activity completion.</param>        
+        /// <returns>The running activity</returns>
+        static public Activity Run(string p_id,System.Action<Activity> p_callback) { Activity a = Create(p_id,null,p_callback,Context.Update); a.Start(); return a; }
 
         /// <summary>
         /// Creates and start a single execution activity.
         /// </summary>
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <param name="p_context">Execution context.</param>
-        /// <returns></returns>
-        static public Activity Run(System.Action<Activity> p_callback,Context p_context) { return Run("",p_callback,p_context); }
+        /// <returns>The running activity</returns>
+        static public Activity Run(System.Action<Activity> p_callback,Context p_context) { Activity a = Create("",null,p_callback,p_context); a.Start(); return a; }
 
         /// <summary>
         /// Creates and start a single execution activity.
         /// </summary>
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <returns></returns>
-        static public Activity Run(System.Action<Activity> p_callback) { return Run("",p_callback,Context.Update); }
+        /// <returns>The running activity</returns>
+        static public Activity Run(System.Action<Activity> p_callback) { Activity a = Create("",null,p_callback,Context.Update); a.Start(); return a; }
+
+        #endregion
 
         #endregion
 
@@ -408,91 +473,120 @@ namespace UnityExt.Core {
         internal int  m_yield_ms;
         internal CancellationTokenSource m_task_cancel;
         
+        #region CTOR
+
         /// <summary>
         /// Creates a new Activity.
         /// </summary>
         /// <param name="p_id">Activity id for searching</param>
         /// <param name="p_context">Execution Context</param>
-        public Activity(string p_id,Context p_context) {                        
+        public Activity(string p_id,Context p_context) { InitActivity(p_id,p_context); }
+        
+        /// <summary>
+        /// Creates a new activity, default to 'Update' context.
+        /// </summary>
+        /// <param name="p_id">Activity id for searching</param>
+        public Activity(string p_id) { InitActivity(p_id, Context.Update); }
+
+        /// <summary>
+        /// Creates a new activity, default to 'Update' context and auto generated id.
+        /// </summary>
+        public Activity() { InitActivity("", Context.Update); }
+
+        /// <summary>
+        /// Internal build the activity
+        /// </summary>
+        /// <param name="p_id"></param>
+        /// <param name="p_context"></param>
+        internal void InitActivity(string p_id,Context p_context) {
             state       = State.Idle;
             context     = p_context;
             string tn   = string.IsNullOrEmpty(m_type_name) ? (m_type_name = GetType().Name.ToLower()) : m_type_name;
             id          = string.IsNullOrEmpty(p_id) ? tn+"-"+GetHashCode().ToString("x6") : p_id;                             
         }
         private string m_type_name;
-        private void OnTaskCompleteDummy() {            
-            if(m_yield_ms>0) System.Threading.Thread.Sleep(m_yield_ms);
-            m_task        = null;
-            m_task_cancel = null;
-        }
 
-        /// <summary>
-        /// Creates a new activity, default to 'Update' context.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching</param>
-        public Activity(string p_id) : this(p_id,Context.Update) { }
-
-        /// <summary>
-        /// Creates a new activity, default to 'Update' context and auto generated id.
-        /// </summary>
-        public Activity() : this("") { }
+        #endregion
 
         /// <summary>
         /// Adds this activity to the queue.
         /// </summary>
         public void Start() {
+            //If activity properly not running reset to idle
+            if(state == State.Complete) state = State.Idle;
+            if(state == State.Stopped)  state = State.Idle;
+            //If idle init task
+            if(state == State.Idle)
             if(m_task==null) {
                 m_task_cancel = new CancellationTokenSource();
-                m_task = new Task(OnTaskCompleteDummy,m_task_cancel.Token);
-            }
-            m_yield_ms  = 0;
-            if(manager)manager.handler.AddActivity(this);            
+                m_task        = new Task(OnTaskCompleteDummy,m_task_cancel.Token);
+                m_yield_ms    = 0;
+            }            
+            //Add to execution queue
+            if(manager)manager.handler.AddActivity(this);
         }
-
+        private void OnTaskCompleteDummy() {    
+            //Sleep is inside task thread, so safe to use
+            if(m_yield_ms>0) System.Threading.Thread.Sleep(m_yield_ms);
+            //Clear up
+            m_task        = null;
+            m_task_cancel = null;
+        }
+        
         /// <summary>
         /// Removes this activity from the execution pool.
         /// </summary>
         public void Stop() { if(manager)manager.handler.RemoveActivity(this); }
 
         /// <summary>
-        /// Auxiliary method to validate if starting is allowed.
-        /// </summary>
-        /// <returns></returns>
-        virtual protected bool IsReady() { return true; }
-
-        /// <summary>
         /// Handler for when the activity was removed.
         /// </summary>
-        internal void OnStop() { 
+        virtual internal void OnStop() { 
+            //Only run if not completed
+            if(state == State.Complete) return;
+            state = State.Stopped;
             if(m_task==null) return;
             m_task_cancel.Cancel();
-            m_task=null;
-            m_task_cancel=null;
+            m_task        = null;
+            m_task_cancel = null;
         }
 
         /// <summary>
-        /// Executes one step.
+        /// Executes one loop step.
         /// </summary>
         virtual internal void Execute() {
             switch(state) {
+                case State.Stopped:  return;
                 case State.Complete: return;
                 case State.Idle:     return;
                 case State.Queued:  { 
-                    if(!IsReady())   return;
-                    OnStart(); 
+                    if(!CanStart())   return;
+                    OnStart();                    
                     state=State.Running; 
                 }
                 break;
             }
             switch(state) {
-                case State.Running:  { 
-                    bool v0 = OnExecute();
-                    bool v1 = true;
+                case State.Running:  {
+                    //Execute the job loop
+                    bool v0 = OnExecuteJob();
+                    //Repeat until 'completed == true' (always true for regular activity)
+                    if(!v0) break;
+                    //Execute main activity thread
+                    bool v1 = OnExecute();
+                    //Default delegate always completed
+                    bool v2 = true;
+                    //Execute delegate and check result
                     if(OnExecuteEvent!=null) v1 = OnExecuteEvent(this);
-                    if(v0 && v1) break;
+                    //Repeat until all steps are done
+                    if(v0) if(v1) if(v2) break;
+                    //Mark complete
                     state = State.Complete;
+                    //Call internal handler
                     OnComplete();
+                    //Call delegate
                     if(OnCompleteEvent!=null) OnCompleteEvent(this);
+                    //Start 'await' Task
                     if(m_task!=null) m_task.Start();                    
                 }
                 break;
@@ -509,12 +603,25 @@ namespace UnityExt.Core {
         /// <summary>
         /// Handler for activity execution loop steps.
         /// </summary>
+        /// <returns>Flag telling the execution loop must continue or not</returns>
         virtual protected bool OnExecute() { return OnExecuteEvent!=null; }
 
         /// <summary>
         /// Handler for activity completion.
         /// </summary>
         virtual protected void OnComplete() { }
+
+        /// <summary>
+        /// Auxiliary method to validate if starting is allowed.
+        /// </summary>
+        /// <returns>Flag telling the activity can start and execute its loop, otherwise will keep looping here and 'Queued'</returns>
+        virtual protected bool CanStart() { return true; }
+
+        /// <summary>
+        /// Helper method to handle unity jobs.
+        /// </summary>
+        /// <returns></returns>
+        virtual internal bool OnExecuteJob() { return true; }
 
         #endregion
 
@@ -524,11 +631,8 @@ namespace UnityExt.Core {
         /// Yields this activity until completion and wait delay seconds before continuying.
         /// </summary>
         /// <param name="p_delay">Extra delay seconds after completion</param>
-        /// <returns></returns>
-        public Task Yield(float p_delay=0f) {             
-            m_yield_ms = (int)(p_delay*1000f);
-            return m_task; 
-        }
+        /// <returns>Task to be waited</returns>
+        public Task Yield(float p_delay=0f) { m_yield_ms = (int)(p_delay*1000f); return m_task; }
 
         /// <summary>
         /// Reference to the awaiter.
@@ -539,13 +643,344 @@ namespace UnityExt.Core {
         /// <summary>
         /// INotification implement.
         /// </summary>
-        /// <param name="completed">Coninutation callback.</param>
-        public void OnCompleted(System.Action completed) {
-            completed();
-        }
+        /// <param name="completed">Continue callback.</param>
+        public void OnCompleted(System.Action completed) { completed(); }
 
         #endregion
 
     }
+
+    #region class Activity<T>
+
+    /// <summary>
+    /// Activity class extension to support unity jobs creation in some methods.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    public class Activity<T> : Activity where T : struct {
+
+        #region static
+
+        /// <summary>
+        /// Workaround for unity's annoying warning to force complete jobs when they exceed this limit.
+        /// </summary>
+        //static public int jobFrameLimit = 4;
+
+        #region CRUD
+
+        /// <summary>
+        /// Auxiliary activity creation
+        /// </summary>
+        /// <param name="p_id"></param>
+        /// <param name="p_on_execute"></param>
+        /// <param name="p_on_complete"></param>
+        /// <param name="p_context"></param>
+        /// <returns></returns>
+        static internal Activity CreateJobActivity(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,bool p_async) {            
+            Activity<T> a = new Activity<T>(p_id,p_async);
+            a.OnCompleteEvent = p_on_complete;
+            a.OnExecuteEvent  = p_on_execute;
+            return a;                        
+        }
+
+        #endregion
+
+        #region Run / Loop
+
+        /// <summary>
+        /// Creates and starts an Activity that executes the desired Unity job in a loop.
+        /// </summary>
+        /// <typeparam name="T">Type derived from unity's job interfaces</typeparam>
+        /// <param name="p_id">Activity id for searching.</param>
+        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
+        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
+        /// <returns>The running activity</returns>
+        static public Activity<T> Run(string p_id,System.Predicate<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity(p_id,p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
+
+        /// <summary>
+        /// Creates and starts an Activity that executes the desired Unity job in a loop.
+        /// </summary>        
+        /// <param name="p_id">Activity id for searching.</param>
+        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
+        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
+        /// <returns></returns>
+        static public Activity<T> Run(System.Predicate<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity("",p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
+
+        /// <summary>
+        /// Creates and starts an Activity that executes the desired Unity job in a loop.
+        /// </summary>        
+        /// <param name="p_id">Activity id for searching.</param>
+        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>                
+        /// <returns>The running activity</returns>
+        new static public Activity<T> Run(string p_id,System.Predicate<Activity> p_callback) { Activity a = CreateJobActivity(p_id,p_callback,null,true); a.Start(); return (Activity<T>)a; }
+
+        /// <summary>
+        /// Creates and starts an Activity that executes the desired Unity job in a loop.
+        /// </summary>        
+        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>                
+        /// <returns>The running activity</returns>
+        new static public Activity<T> Run(System.Predicate<Activity> p_callback) { Activity a = CreateJobActivity("",p_callback,null,true); a.Start(); return (Activity<T>)a; }
+
+        #endregion
+
+        #region Run / Once
+
+        /// <summary>
+        /// Creates and start a single execution activity performing the specified unity job.
+        /// </summary>        
+        /// <param name="p_id">Activity id for searching.</param>
+        /// <param name="p_callback">Callback for handling the activity completion.</param>        
+        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
+        /// <returns>The running activity</returns>
+        static public Activity<T> Run(string p_id,System.Action<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity(p_id,null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
+
+        /// <summary>
+        /// Creates and start a single execution activity performing the specified unity job.
+        /// </summary>        
+        /// <param name="p_id">Activity id for searching.</param>
+        /// <param name="p_callback">Callback for handling the activity completion.</param>                
+        /// <returns>The running activity</returns>
+        new static public Activity<T> Run(string p_id,System.Action<Activity> p_callback) { Activity a = CreateJobActivity(p_id,null,p_callback,true); a.Start(); return (Activity<T>)a; }
+
+        /// <summary>
+        /// Creates and start a single execution activity performing the specified unity job.
+        /// </summary>        
+        /// <param name="p_callback">Callback for handling the activity completion.</param>        
+        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
+        /// <returns>The running activity</returns>
+        static public Activity<T> Run(System.Action<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity("",null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
+
+        /// <summary>
+        /// Creates and start a single execution activity performing the specified unity job.
+        /// </summary>        
+        /// <param name="p_callback">Callback for handling the activity completion.</param>                
+        /// <returns>The running activity</returns>
+        new static public Activity<T> Run(System.Action<Activity> p_callback) { Activity a = CreateJobActivity("",null,p_callback,true); a.Start(); return (Activity<T>)a; }
+
+        #endregion
+
+        #endregion
+
+        #region CTOR
+
+        /// <summary>
+        /// Creates a new activity choosing between running the job sync or async (Run or Schedule)
+        /// </summary>
+        /// <param name="p_id"></param>
+        /// <param name="p_async"></param>
+        public Activity(string p_id,bool p_async) { InitActivity(p_id,p_async); }
+
+        /// <summary>
+        /// Creates a new activity choosing between running the job sync or async (Run or Schedule)
+        /// </summary>
+        /// <param name="p_id"></param>
+        public Activity(string p_id) { InitActivity(p_id,true); }
+
+        /// <summary>
+        /// Creates a new activity choosing between running the job sync or async (Run or Schedule)
+        /// </summary>
+        public Activity() { InitActivity("",true); }
+
+        /// <summary>
+        /// Internal build the activity for jobs.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="p_id"></param>
+        internal void InitActivity(string p_id,bool p_async) {
+            //Init base activity
+            InitActivity(p_id,p_async ? Context.JobAsync : Context.Job);            
+            //Init flags
+            m_has_job          = false;
+            m_has_job_parallel = false;
+            //Check if it allows parallel for
+            Type[] itf_l = typeof(T).GetInterfaces();
+            for(int i = 0; i<itf_l.Length; i++) {
+                string tn = itf_l[i].Name;
+                if(tn.Contains("IJobParallelFor")) { m_has_job=true; m_has_job_parallel=true; }
+                if(tn.Contains("IJob"))            { m_has_job=true; }
+            }
+            //Create job instance
+            job = m_has_job ? new T() : default(T);
+            //Init flags            
+            m_is_scheduled=false;
+            //If parallel length and step <=0 execute as regular job
+            m_job_parallel_length = 0;
+            m_job_parallel_step   = 0;
+            if(m_jb_run==null)      m_jb_run        = GetMethod(typeof(IJobExtensions),"Run");
+            if(m_jb_schedule==null) m_jb_schedule   = GetMethod(typeof(IJobExtensions),"Schedule");            
+            if(m_args1==null)   m_args1 = new object[1];
+            if(m_args2==null)   m_args2 = new object[2];
+            if(!m_has_job_parallel) return;
+            if(m_jbpf_run==null)        m_jbpf_run      = GetMethod(typeof(IJobParallelForExtensions),"Run");
+            if(m_jbpf_schedule==null)   m_jbpf_schedule = GetMethod(typeof(IJobParallelForExtensions),"Schedule");            
+            if(m_args4==null)           m_args4 = new object[4];            
+        }
+        MethodInfo m_jb_run;
+        MethodInfo m_jb_schedule;
+        MethodInfo m_jbpf_run;
+        MethodInfo m_jbpf_schedule;
+        object[] m_args1;
+        object[] m_args2;        
+        object[] m_args4;
+        /// <summary>
+        /// Helper to extract and convert the job run/schedule methods and work by reflection
+        /// </summary>
+        /// <param name="p_type"></param>
+        /// <param name="p_name"></param>
+        /// <returns></returns>
+        internal static MethodInfo GetMethod(Type p_type,string p_name) {
+            MethodInfo[] l = p_type.GetMethods();
+            MethodInfo res = null;
+            for(int i=0;i<l.Length;i++) if(l[i].Name == p_name) { res = l[i]; break; }
+            if(res==null) return res;                      
+            return res.MakeGenericMethod(new Type[]{typeof(T)});
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Overrides the base class allowing to switch between job and jobsync
+        /// </summary>
+        new public Context context {
+            get { return base.context; }
+            set {
+                if(value != Context.Job) if(value != Context.JobAsync) { Debug.LogWarning($"Activity.{typeof(T).Name}> Can't choose contexts different than Job/JobAsync, will ignore."); return; }
+                if(m_is_scheduled) { handle.Complete(); m_is_scheduled = false; }
+                base.context = value;
+            }
+        }
+
+        /// <summary>
+        /// Reference to the job
+        /// </summary>
+        public T job;
+
+        /// <summary>
+        /// Job handle is any.
+        /// </summary>
+        public JobHandle handle;
+        
+        /// <summary>
+        /// Flag that tells if the job handle is valid.
+        /// </summary>
+        public bool scheduled { get { return m_is_scheduled; } }
+        internal bool m_is_scheduled;
+
+        /// <summary>
+        /// Helper to use with unity jobs
+        /// </summary>                
+        internal bool m_has_job;
+        internal bool m_has_job_parallel;
+        //internal int  m_job_frame_limit;
+        
+        /// <summary>
+        /// Set the desired loop execution parameters of the parallel job. If both params are 0 the job will execute as a regular IJob
+        /// </summary>
+        /// <param name="p_length"></param>
+        /// <param name="p_steps"></param>
+        public void SetJobForLoop(int p_length=0,int p_steps=0) {
+            m_job_parallel_length = p_length;
+            m_job_parallel_step   = p_steps;
+        }
+        internal int             m_job_parallel_length;
+        internal int             m_job_parallel_step;
+
+        /// <summary>
+        /// Handles when the job leaves the execution pool.
+        /// </summary>
+        internal override void OnStop() {
+            base.OnStop();
+            //No need to run because complete already did it
+            if(state == State.Complete) return;
+            //Ensure completion and clears handle
+            if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
+            //Calls the job component complete callback
+            if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnDestroy(); job = (T)itf; }
+        }
+
+        /// <summary>
+        /// Overrides to handle unity's job execution
+        /// </summary>
+        /// <returns></returns>
+        internal override bool OnExecuteJob() {
+            //If no job instance return 'completed'
+            if(!m_has_job) return true;
+            //Invalid contexts return 'true == completed'
+            if(context != Context.Job) 
+            if(context != Context.JobAsync) return true;
+            //If type is parallel and length/steps are set
+            bool is_parallel = m_has_job_parallel ? (m_job_parallel_length>=0 && m_job_parallel_step>=0) : false;                                    
+            //Init the local variables
+            //If parallel use IJobParallelFor extensions otherwise IJobExtensions
+            //Job      == Run
+            //JobAsync == Schedule
+            object[]   job_fn_args = null;
+            MethodInfo job_fn      = null;
+            switch(context) {                    
+                case Context.Job:           { job_fn = is_parallel ? m_jbpf_run      : m_jb_run;       job_fn_args = is_parallel ? m_args2 : m_args1; } break; 
+                case Context.JobAsync:      { job_fn = is_parallel ? m_jbpf_schedule : m_jb_schedule;  job_fn_args = is_parallel ? m_args4 : m_args2; } break;
+            }            
+            //If invalids return 'completed'
+            if(job_fn_args == null) return true;
+            if(job_fn      == null) return true;
+            //Populate arguments            
+            if(is_parallel)
+            switch(context) {                                
+                //IJobParallelForExtensions.Run(job,length)
+                case Context.Job:           { job_fn_args[1] = m_job_parallel_length; } break; 
+                //IJobParallelForExtensions.Schedule(job,length,steps,depend_handle)
+                case Context.JobAsync:      { if(m_is_scheduled) break; job_fn_args[1] = m_job_parallel_length; job_fn_args[2] = m_job_parallel_step; job_fn_args[3] = default(JobHandle); } break;
+            }
+            else
+            switch(context) {                    
+                //IJobExtensions.Run(job)
+                case Context.Job:           { } break; 
+                //IJobExtensions.Schedule(job,depend_handle)
+                case Context.JobAsync:      { if(m_is_scheduled) break; job_fn_args[1] = default(JobHandle); } break;
+            }
+            //Invoke the method fetching or not the job handle
+            switch(context) {
+                //Sync jobs uses 'Run'
+                case Context.Job:           {
+                    //Calls the job component init callback
+                    if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnInit(); job = (T)itf; }
+                    job_fn_args[0] = job;
+                    job_fn.Invoke(null,job_fn_args); 
+                    m_is_scheduled = false; 
+                }
+                break;
+                //Async jobs uses 'Schedule', it runs once, capture the handle and wait for the handle to complete
+                case Context.JobAsync:      { 
+                    if(m_is_scheduled) break; 
+                    //Calls the job component init callback
+                    if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnInit(); job = (T)itf; }
+                    job_fn_args[0] = job;
+                    handle = (JobHandle)job_fn.Invoke(null,job_fn_args); 
+                    m_is_scheduled  = true;                    
+                    //m_job_frame_limit = jobFrameLimit;                    
+                }
+                break;
+            }
+            //If has handle use 'IsCompleted' otherwise its sync run and should be finished now
+            bool is_completed = m_is_scheduled ? handle.IsCompleted : true;
+            //Decreases the frame counter to prevent temp_alloc warnings
+            /*
+            if(m_has_job_handle) {
+                m_job_frame_limit--;
+                is_completed = m_job_frame_limit<=4 ? true : is_completed;
+            }
+            //*/
+            //Return if not completed
+            if(!is_completed) return false;
+            //Ensure completion and clears handle
+            if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
+            //Calls the job component complete callback
+            if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnComplete(); job = (T)itf; }
+            //Return 'completed'
+            return true;
+        }
+
+    }
+
+#endregion
 
 }
