@@ -464,7 +464,7 @@ namespace UnityExt.Core {
                     if(idx>=0) return;
                     //Search the queue too
                     idx = ltq_i.IndexOf(itf); 
-                    if(idx>=0) if(idx<ltq_i.Count) ltq_i[idx] = null;
+                    if(idx>=0 && idx<ltq_i.Count) ltq_i[idx] = null;
                 }
             }
 

@@ -254,6 +254,10 @@ namespace UnityExt.Core {
         }
         static private Manager m_manager;
 
+        #endregion
+
+        #region static
+
         /// <summary>
         /// Execution time slice for async nodes.
         /// </summary>
@@ -262,11 +266,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Maximum created threads for paralell nodes.
         /// </summary>
-        static public int maxThreadCount = 3;
-
-        #endregion
-
-        #region static
+        static public int maxThreadCount = 4;
 
         #region CRUD
 
@@ -286,22 +286,7 @@ namespace UnityExt.Core {
             a.OnExecuteEvent  = p_on_execute;
             return a;
         }
-        /*
-        /// <summary>
-        /// Auxiliary activity creation
-        /// </summary>
-        /// <param name="p_id"></param>
-        /// <param name="p_on_execute"></param>
-        /// <param name="p_on_complete"></param>
-        /// <param name="p_context"></param>
-        /// <returns></returns>
-        static internal Activity Create<T>(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,bool p_async) where T : struct,IJob,IJobParallelFor {
-            Activity<T> a = new Activity<T>(p_id,p_async);
-            a.OnCompleteEvent = p_on_complete;
-            a.OnExecuteEvent  = p_on_execute;
-            return a;
-        }
-        //*/
+        
         #endregion
 
         /// <summary>
@@ -798,22 +783,44 @@ namespace UnityExt.Core {
                 if(tn.Contains("IJobParallelFor")) { m_has_job=true; m_has_job_parallel=true; }
                 if(tn.Contains("IJob"))            { m_has_job=true; }
             }
+
+            if(!m_has_job) {
+                Debug.LogWarning($"Activity.{typeof(T).Name}> Type 'T' does not implement no 'IJob' related interface. UnityJobs will not work.");
+            }
+
             //Create job instance
             job = m_has_job ? new T() : default(T);
             //Init flags            
-            m_is_scheduled=false;
+            m_is_scheduled = false;
+            m_is_scheduled = false;
             //If parallel length and step <=0 execute as regular job
             m_job_parallel_length = 0;
             m_job_parallel_step   = 0;
-            if(m_jb_run==null)      m_jb_run        = GetMethod(typeof(IJobExtensions),"Run");
-            if(m_jb_schedule==null) m_jb_schedule   = GetMethod(typeof(IJobExtensions),"Schedule");            
-            if(m_args1==null)   m_args1 = new object[1];
-            if(m_args2==null)   m_args2 = new object[2];
+            //Some caching
+            if(m_jb_ext_type   == null) m_jb_ext_type   = typeof(IJobExtensions);
+            if(m_jbpf_ext_type == null) m_jbpf_ext_type = typeof(IJobParallelForExtensions);
+            if(m_mkg_args      == null) m_mkg_args      = new Type[1];
+            //Fetch reflection static methods converted to the desired type
+            if(m_jb_run==null)      m_jb_run        = GetMethod(m_jb_ext_type,"Run",     ref m_jb_run_base);
+            if(m_jb_schedule==null) m_jb_schedule   = GetMethod(m_jb_ext_type,"Schedule",ref m_jb_schedule_base);
+            //Create arguments containers for each method signatures
+            if(m_args1==null)       m_args1 = new object[1];
+            if(m_args2==null)       m_args2 = new object[2];            
+            //Skip if no parallel job
             if(!m_has_job_parallel) return;
-            if(m_jbpf_run==null)        m_jbpf_run      = GetMethod(typeof(IJobParallelForExtensions),"Run");
-            if(m_jbpf_schedule==null)   m_jbpf_schedule = GetMethod(typeof(IJobParallelForExtensions),"Schedule");            
+            //Fetch reflection static methods converted to the desired type
+            if(m_jbpf_run==null)        m_jbpf_run      = GetMethod(m_jbpf_ext_type,"Run",     ref m_jbpf_run_base);
+            if(m_jbpf_schedule==null)   m_jbpf_schedule = GetMethod(m_jbpf_ext_type,"Schedule",ref m_jbpf_schedule_base);
+            //Create arguments containers for each method signatures
             if(m_args4==null)           m_args4 = new object[4];            
         }
+        static Type m_jb_ext_type;
+        static Type m_jbpf_ext_type;
+        static Type[] m_mkg_args;
+        static MethodInfo m_jb_run_base;
+        static MethodInfo m_jb_schedule_base;
+        static MethodInfo m_jbpf_run_base;
+        static MethodInfo m_jbpf_schedule_base;
         MethodInfo m_jb_run;
         MethodInfo m_jb_schedule;
         MethodInfo m_jbpf_run;
@@ -821,18 +828,28 @@ namespace UnityExt.Core {
         object[] m_args1;
         object[] m_args2;        
         object[] m_args4;
+
         /// <summary>
         /// Helper to extract and convert the job run/schedule methods and work by reflection
         /// </summary>
         /// <param name="p_type"></param>
         /// <param name="p_name"></param>
         /// <returns></returns>
-        internal static MethodInfo GetMethod(Type p_type,string p_name) {
-            MethodInfo[] l = p_type.GetMethods();
-            MethodInfo res = null;
-            for(int i=0;i<l.Length;i++) if(l[i].Name == p_name) { res = l[i]; break; }
-            if(res==null) return res;                      
-            return res.MakeGenericMethod(new Type[]{typeof(T)});
+        internal static MethodInfo GetMethod(Type p_type,string p_name,ref MethodInfo p_cache) {            
+            //Assign cache
+            MethodInfo res = p_cache;            
+            if(res==null) { 
+                //If no cache get methods and search
+                MethodInfo[] l = p_type.GetMethods();
+                for(int i=0;i<l.Length;i++) if(l[i].Name == p_name) { res = l[i]; break; }
+            }            
+            //If still null skip
+            if(res==null) return res;
+            //Assign cache
+            if(p_cache==null) p_cache = res;
+            //Create the generic method
+            m_mkg_args[0] = typeof(T);
+            return res.MakeGenericMethod(m_mkg_args);
         }
 
         #endregion
@@ -889,7 +906,7 @@ namespace UnityExt.Core {
         /// </summary>
         internal override void OnStop() {
             base.OnStop();
-            //No need to run because complete already did it
+            //No need to run because 'complete' already did it
             if(state == State.Complete) return;
             //Ensure completion and clears handle
             if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
@@ -902,7 +919,7 @@ namespace UnityExt.Core {
         /// </summary>
         /// <returns></returns>
         internal override bool OnExecuteJob() {
-            //If no job instance return 'completed'
+            //If no job instance return 'true == completed'
             if(!m_has_job) return true;
             //Invalid contexts return 'true == completed'
             if(context != Context.Job) 
@@ -922,48 +939,59 @@ namespace UnityExt.Core {
             //If invalids return 'completed'
             if(job_fn_args == null) return true;
             if(job_fn      == null) return true;
-            //Populate arguments            
-            if(is_parallel)
-            switch(context) {                                
-                //IJobParallelForExtensions.Run(job,length)
-                case Context.Job:           { job_fn_args[1] = m_job_parallel_length; } break; 
-                //IJobParallelForExtensions.Schedule(job,length,steps,depend_handle)
-                case Context.JobAsync:      { if(m_is_scheduled) break; job_fn_args[1] = m_job_parallel_length; job_fn_args[2] = m_job_parallel_step; job_fn_args[3] = default(JobHandle); } break;
-            }
-            else
-            switch(context) {                    
-                //IJobExtensions.Run(job)
-                case Context.Job:           { } break; 
-                //IJobExtensions.Schedule(job,depend_handle)
-                case Context.JobAsync:      { if(m_is_scheduled) break; job_fn_args[1] = default(JobHandle); } break;
-            }
-            //Invoke the method fetching or not the job handle
+            //Flag that tells Run/Schedule should be called.
+            bool will_invoke = false;
+            //Prepare arguments for Run/Schedule based on context
             switch(context) {
-                //Sync jobs uses 'Run'
-                case Context.Job:           {
-                    //Calls the job component init callback
-                    if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnInit(); job = (T)itf; }
-                    job_fn_args[0] = job;
-                    job_fn.Invoke(null,job_fn_args); 
+                //IJobParallelForExtensions.Run(job,length)
+                //IJobExtensions.Run(job)
+                case Context.Job: {                    
+                    //Assign parameters
+                    if(is_parallel) {
+                        job_fn_args[1] = m_job_parallel_length;
+                    }                    
+                    //Reinforce not-scheduled
                     m_is_scheduled = false; 
+                    //Flag to invoke
+                    will_invoke = true;
                 }
                 break;
-                //Async jobs uses 'Schedule', it runs once, capture the handle and wait for the handle to complete
-                case Context.JobAsync:      { 
+                //IJobParallelForExtensions.Schedule(job,length,steps,depend_handle)                    
+                //IJobExtensions.Schedule(job,depend_handle)
+                case Context.JobAsync: {
+                    //If something is scheduled already, skip
                     if(m_is_scheduled) break; 
-                    //Calls the job component init callback
-                    if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnInit(); job = (T)itf; }
-                    job_fn_args[0] = job;
-                    handle = (JobHandle)job_fn.Invoke(null,job_fn_args); 
-                    m_is_scheduled  = true;                    
-                    //m_job_frame_limit = jobFrameLimit;                    
+                    //Assign parameters
+                    if(is_parallel) {
+                        job_fn_args[1] = m_job_parallel_length;
+                        job_fn_args[2] = m_job_parallel_step; 
+                        job_fn_args[3] = default(JobHandle);
+                    }
+                    else {
+                        job_fn_args[1] = default(JobHandle);
+                    }
+                    //Flag to invoke
+                    will_invoke = true;
                 }
                 break;
+            }
+            //If invoke is needed, update the job and invoke the method
+            if(will_invoke) {
+                if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnInit(); job = (T)itf; }
+                //Set the most up-to-date struct
+                job_fn_args[0] = job;
+                //Invoke the method
+                object invoke_res = job_fn.Invoke(null,job_fn_args);
+                //If async mark scheduled as true and store the handle
+                if(context == Context.JobAsync) {
+                    m_is_scheduled = true;
+                    handle = (JobHandle)invoke_res;
+                }                
             }
             //If has handle use 'IsCompleted' otherwise its sync run and should be finished now
-            bool is_completed = m_is_scheduled ? handle.IsCompleted : true;
-            //Decreases the frame counter to prevent temp_alloc warnings
+            bool is_completed = m_is_scheduled ? handle.IsCompleted : true;            
             /*
+            //Decreases the frame counter to prevent temp_alloc warnings
             if(m_has_job_handle) {
                 m_job_frame_limit--;
                 is_completed = m_job_frame_limit<=4 ? true : is_completed;
