@@ -3,6 +3,8 @@ using UnityEngine.UI;
 using System.Collections;
 using System;
 using UnityEngine.Scripting;
+using System.Collections.Generic;
+using System.Text;
 
 namespace UnityExt.Core {
 
@@ -91,6 +93,11 @@ namespace UnityExt.Core {
         private float         m_fps_sample_sum;
         private int           m_next_buffer_assert;
         private RectTransform m_field_rt;
+        private StringBuilder m_stats_sb;
+
+        static private List<string>  m_number_string;
+        static private List<string>  m_vsync_string;
+
         private Canvas        GetCanvas() {            
             if(m_canvas) return m_canvas;
             Transform t = transform.parent;
@@ -113,6 +120,20 @@ namespace UnityExt.Core {
             if(field) m_field_rt = field.rectTransform;            
             //Next buffer assertion force
             m_next_buffer_assert = 0;
+            //Create and cache a number>string lut
+            if(m_number_string==null) {
+                m_number_string = new List<string>();
+                for(int i=0;i<1201;i++) m_number_string.Add(string.Format("{0,3:###}",i));
+            }
+            //Create a cache lut for vsync string
+            if(m_vsync_string==null) {
+                m_vsync_string = new List<string>();
+                m_vsync_string.Add("Off");
+                m_vsync_string.Add("On");
+                m_vsync_string.Add("Half");
+            }
+            //Create string builder for stats
+            if(m_stats_sb==null) m_stats_sb = new StringBuilder();
         }
 
         /// <summary>
@@ -215,15 +236,25 @@ namespace UnityExt.Core {
             int cpu_time = timing_data_len<=0 ? dt_ms : (int)m_timing_samples[0].cpuFrameTime;
             //GPU Time in ms
             int gpu_time = timing_data_len<=0 ? -1    : (int)m_timing_samples[0].gpuFrameTime;
-            //Log string
-            string stats = "";
+            //Log string (StringBuilder helps with GC.Alloc)
+            m_stats_sb.Clear();
             //Fill timings and fps
-            if(cpu_time>=0) stats += "CPU:"+string.Format("{0,3:###}",cpu_time)+"ms|";
-            if(gpu_time>=0) stats += "GPU:"+string.Format("{0,3:###}",gpu_time)+"ms|";
-            stats += "FPS:"+(fps<=0 ? "---" : string.Format("{0,3:###}",fps))+"|";
-            stats += "VSYNC: "+(QualitySettings.vSyncCount<=0 ? "Off" : (QualitySettings.vSyncCount==1 ? "On" : "Half"));
+            if(cpu_time>=0) {
+                m_stats_sb.Append("CPU:");
+                m_stats_sb.Append(m_number_string[Mathf.Clamp(cpu_time,0,1200)]);
+                m_stats_sb.Append("ms|");
+            }
+            if(gpu_time>=0){
+                m_stats_sb.Append("GPU:");
+                m_stats_sb.Append(m_number_string[Mathf.Clamp(gpu_time,0,1200)]);
+                m_stats_sb.Append("ms|");
+            }
+            m_stats_sb.Append("FPS:");
+            m_stats_sb.Append(fps<=0 ? "---" : m_number_string[Mathf.Clamp(fps,0,1200)]);
+            m_stats_sb.Append("|VSYNC: ");
+            m_stats_sb.Append(m_vsync_string[QualitySettings.vSyncCount]);
             //If there is a field update it
-            if(field) field.text = stats;
+            if(field) field.text = m_stats_sb.ToString();
         }
 
         /// <summary>

@@ -52,7 +52,7 @@ namespace UnityExt.Core {
                     la = new System.Collections.Generic.List<Activity>(15000);
                     ia = 0;
                     context = p_context;
-                    timer   = context == Activity.Context.Async ? new System.Diagnostics.Stopwatch() : null;                    
+                    timer   = context == Activity.Context.Async  ? new System.Diagnostics.Stopwatch() : null;                    
                 }
 
                 /// <summary>
@@ -60,25 +60,55 @@ namespace UnityExt.Core {
                 /// </summary>
                 /// <returns></returns>
                 virtual public bool IsEmpty() {
-                    return la.Count<=0;
+                    return la==null ? true : la.Count<=0;
                 }
 
                 /// <summary>
                 /// Clear the lists
                 /// </summary>
                 virtual public void Clear() {
-                    //Threads needs to null the element and handle inside thread context
-                    if(context == Activity.Context.Thread) {
-                        if(la!=null) for(int i=0;i<la.Count;i++) la[i]=null;
-                    }
-                    else {
-                        if(la!=null) {
-                            //Notify running activities for stopping
-                            for(int i=0;i<la.Count;i++) if(la[i]!=null) la[i].OnStop();
-                            la.Clear();
-                        }
-                    }
+                    //Stop running timer
                     if(timer!=null) timer.Stop();
+                    //Skip invalid
+                    if(la==null) return;
+                    switch(context) {
+                        case Activity.Context.Thread: {
+                            lock(this) { 
+                                //Threads needs to null the element and handle inside thread context
+                                for(int i=0;i<la.Count;i++) if(la[i]!=null) { la[i].OnStopInternal(); la[i]=null; }
+                            }
+                        }
+                        break;
+                        default:  {
+                            for(int i=0;i<la.Count;i++) if(la[i]!=null) la[i].OnStopInternal();
+                            la.Clear();                        
+                        }
+                        break;
+                    }                    
+                }
+
+                /// <summary>
+                /// Given an activity invalidates it.
+                /// </summary>
+                /// <param name="p_activity"></param>
+                internal bool SafeInvalidate(Activity p_activity) {
+                    int idx = -1;
+                    lock(this) { 
+                        idx = la.IndexOf(p_activity); 
+                        if(idx>=0) la[idx] = null;
+                    }
+                    return idx>=0;
+                }
+
+                /// <summary>
+                /// Safe Add a new element.
+                /// </summary>
+                /// <param name="p_activity"></param>
+                internal void SafeAdd(Activity p_activity) {
+                    if(p_activity==null) return;
+                    lock(this) { 
+                        if(!la.Contains(p_activity)) la.Add(p_activity);
+                    }
                 }
 
                 /// <summary>
@@ -100,9 +130,9 @@ namespace UnityExt.Core {
                 /// </summary>
                 /// <param name="p_id"></param>
                 /// <returns></returns>
-                public System.Collections.Generic.List<Activity> FindAll(string p_id) {
-                System.Collections.Generic.List<Activity> res = null;
-                    if(la==null) return res = new System.Collections.Generic.List<Activity>();
+                public SCG.List<Activity> FindAll(string p_id) {
+                    SCG.List<Activity> res = null;
+                    if(la==null) return res = new SCG.List<Activity>();
                     m_id_query = p_id;
                     res = la.FindAll(FindById);
                     m_id_query = "";
@@ -122,14 +152,16 @@ namespace UnityExt.Core {
                 /// Executes all activities.
                 /// </summary>
                 virtual public void Execute() {
-                    //Prune activities
-                    for(int i=0;i<la.Count;i++) { 
-                        if(i<0)         break;
-                        if(i>=la.Count) break;
-                        if(la[i]==null ? true : la[i].completed) {                            
-                            if(i>=0)if(i<la.Count)la.RemoveAt(i--);
-                        }
+                    
+                    lock(this) { 
+                        //Prune activities
+                        for(int i=0;i<la.Count;i++) {
+                            if(la[i]==null ? true : la[i].completed) {
+                                la.RemoveAt(i--);
+                            }
+                        }                    
                     }
+
                     //Skip if empty
                     if(la.Count<=0) return;
                     //Shortcut bool
@@ -179,7 +211,7 @@ namespace UnityExt.Core {
                 /// CTOR
                 /// </summary>
                 public List(Activity.Context p_context) : base(p_context) {
-                    li = new SCG.List<T>(5000);
+                    li = new SCG.List<T>(15000);
                     ii = 0;                    
                 }
 
@@ -187,7 +219,31 @@ namespace UnityExt.Core {
                 /// Check if this list is totally empty.
                 /// </summary>
                 /// <returns></returns>
-                override public bool IsEmpty() { return base.IsEmpty() ? li.Count<=0 : false; }
+                override public bool IsEmpty() { return base.IsEmpty() ? (li==null ? true : li.Count<=0) : false; }
+
+                /// <summary>
+                /// Safe Add a new element.
+                /// </summary>
+                /// <param name="p_interface"></param>
+                internal void SafeAdd(T p_interface) {
+                    if(p_interface==null) return;
+                    lock(this) { 
+                        if(!li.Contains(p_interface)) li.Add(p_interface);
+                    }
+                }
+
+                /// <summary>
+                /// Given an activity invalidates it.
+                /// </summary>
+                /// <param name="p_activity"></param>
+                internal bool Invalidate(T p_interface) {
+                    int idx = -1;
+                    lock(this) {                         
+                        idx = li.IndexOf(p_interface); 
+                        if(idx>=0) li[idx] = default(T);
+                    }
+                    return idx>=0;
+                }
 
                 /// <summary>
                 /// Clear this execution list.
@@ -195,13 +251,21 @@ namespace UnityExt.Core {
                 override public void Clear() {
                     //Clear activities
                     base.Clear(); 
-                    //Threads needs to null the element and handle inside thread context
-                    if(context == Activity.Context.Thread) {
-                        if(li!=null) for(int i=0;i<li.Count;i++) li[i]=default(T);
-                    }
-                    else {
-                        if(li!=null) li.Clear();
-                    }                    
+                    //Skip invalid
+                    if(li==null) return;
+                    switch(context) {
+                        case Activity.Context.Thread: {
+                            lock(this) { 
+                                //Threads needs to null the element and handle inside thread context
+                                for(int i=0;i<li.Count;i++) li[i]=default(T);
+                            }
+                        }
+                        break;
+                        default: {
+                            li.Clear();
+                        }
+                        break;
+                    }    
                 }
 
                 #region Execute
@@ -212,12 +276,12 @@ namespace UnityExt.Core {
                 override public void Execute() {                    
                     //Iterate activities
                     base.Execute();                                        
-                    //Prune interfaces
-                    for(int i=0;i<li.Count;i++) { 
-                        if(i<0) continue;
-                        if(i>=li.Count) break;
-                        if(li[i]!=null) continue;
-                        if(i>=0)if(i<li.Count)li.RemoveAt(i--); 
+
+                    lock(this) { 
+                        //Prune interfaces
+                        for(int i=0;i<li.Count;i++) { 
+                            if(li[i]==null)li.RemoveAt(i--); 
+                        }
                     }
                     //Skip if empty
                     if(li.Count<=0) return;
@@ -228,7 +292,7 @@ namespace UnityExt.Core {
                     if(!is_async) ii=0;
                     //Loop
                     for(int i=0;i<li.Count;i++) {
-                        object li_it = ii<0 ? default(T) : (ii>=li.Count ? default(T) : li[ii]);
+                        object li_it = ii>=li.Count ? default(T) : li[ii];
                         //Skip invalid
                         if(li_it==null) continue;                        
                         //Cast the interface based on the context.
@@ -266,12 +330,14 @@ namespace UnityExt.Core {
             internal Thread[] thdl;            
             internal SCG.List<Activity> ltq_a;
             internal SCG.List<IThreadUpdateable> ltq_i;
+            internal SCG.List<Action> ltq_jobs;            
             internal float  thread_keep_alive_tick;            
-            internal bool   thread_kill_flag;
+            internal bool   thread_kill_flag;            
             internal int    thread_queue_target_a;
             internal int    thread_queue_target_i;
             internal int    thread_assert_target;
-
+            
+            
             /// <summary>
             /// CTOR
             /// </summary>
@@ -280,8 +346,9 @@ namespace UnityExt.Core {
                 if(llu==null) llu = new List<ILateUpdateable>(Activity.Context.LateUpdate);
                 if(lfu==null) lfu = new List<IFixedUpdateable>(Activity.Context.FixedUpdate);
                 if(lau==null) lau = new List<IAsyncUpdateable>(Activity.Context.Async);                
-                if(ltq_a==null) ltq_a = new SCG.List<Activity>();                
-                if(ltq_i==null) ltq_i = new SCG.List<IThreadUpdateable>();
+                if(ltq_a==null)      ltq_a    = new SCG.List<Activity>();                
+                if(ltq_i==null)      ltq_i    = new SCG.List<IThreadUpdateable>();                
+                if(ltq_jobs == null) ltq_jobs = new SCG.List<Action>();                
                 //Init threads based on max allowed threads.
                 int max_thread = Activity.maxThreadCount;
                 if(lt==null)   lt   = new List<IThreadUpdateable>[max_thread];
@@ -290,7 +357,7 @@ namespace UnityExt.Core {
                 //Index of the thread to add nodes next
                 thread_queue_target_a = 0;
                 thread_queue_target_i = 0;
-                thread_assert_target  = 0;
+                thread_assert_target  = 0;                
             }
 
             /// <summary>
@@ -326,10 +393,12 @@ namespace UnityExt.Core {
                 if(llu!=null) llu.Clear();
                 if(lfu!=null) lfu.Clear();
                 if(lau!=null) lau.Clear();
-                for(int i=0;i<lt.Length;i++) { lt[i].Clear(); }
-                if(ltq_a!=null) ltq_a.Clear();
-                if(ltq_i!=null) ltq_i.Clear();
                 thread_kill_flag = true;
+                lock(this) { 
+                    for(int i=0;i<lt.Length;i++) { lt[i].Clear(); }
+                    if(ltq_a!=null) ltq_a.Clear();
+                    if(ltq_i!=null) ltq_i.Clear();
+                }                
             }
 
             #region Add/Remove
@@ -360,8 +429,8 @@ namespace UnityExt.Core {
                 //Skip invalid
                 if(a==null)               return;
                 //Only accept correctly stopped tasks
-                if(a.state==Activity.State.Running) { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already running."); return; }
-                if(a.state==Activity.State.Queued)  { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already queued.");  return; }
+                if(a.state==Activity.State.Running) { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already running.");*/ return; }
+                if(a.state==Activity.State.Queued)  { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already queued.");*/  return; }
                 a.state = Activity.State.Queued;
                 switch(a.context) {
                     case Activity.Context.Job:
@@ -371,14 +440,16 @@ namespace UnityExt.Core {
                     case Activity.Context.FixedUpdate: if(!lfu.la.Contains(a)) lfu.la.Add(a); break;
                     case Activity.Context.Async:       if(!lau.la.Contains(a)) lau.la.Add(a); break;
                     //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way
-                    case Activity.Context.Thread:    {                        
-                        if(ltq_a.Contains(a)) break;
-                        //Add and trigger the thread creation
-                        ltq_a.Add(a); 
+                    case Activity.Context.Thread:    {       
+                        //Safely add to queue
+                        SafeAdd(ltq_a,a);
+                        //Assert for thread creation
                         AssertThread(); 
                         break; 
                     }
                 }
+                //Call added handler.
+                a.OnAddedInternal();
             }
 
             /// <summary>
@@ -390,9 +461,8 @@ namespace UnityExt.Core {
                 //Skip invalid
                 if(a==null) return;                
                 //Only accept active/running
-                if(a.state==Activity.State.Complete) { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already completed."); return; }
-                if(a.state==Activity.State.Stopped)  { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already stopped.");   return; }
-                int idx;
+                //if(a.state==Activity.State.Complete) { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already completed."); return; }
+                //if(a.state==Activity.State.Stopped)  { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already stopped.");   return; }                
                 switch(a.context) {
                     case Activity.Context.Job:
                     case Activity.Context.JobAsync:
@@ -401,22 +471,15 @@ namespace UnityExt.Core {
                     case Activity.Context.FixedUpdate: if(lfu.la.Contains(a)) lfu.la.Remove(a); break;
                     case Activity.Context.Async:       if(lau.la.Contains(a)) lau.la.Remove(a); break;
                     //Threaded lists its better to null the element and allow removal during the synced execution of the thread
-                    case Activity.Context.Thread:      { 
+                    case Activity.Context.Thread: { 
                         //Search for the activity and null it for next pruning
-                        for(int i=0;i<lt.Length;i++) {
-                            List it = lt[i];
-                            idx = it.la.IndexOf(a); 
-                            if(idx<0) continue;
-                            it.la[idx] = null;                             
-                            break;
-                        }                        
-                        //Search the queue too
-                        idx = ltq_a.IndexOf(a); 
-                        if(idx>=0) ltq_a[idx] = null;
+                        for(int i=0;i<lt.Length;i++) if(lt[i].SafeInvalidate(a)) break;             
+                        //Safely invalidate for removal
+                        SafeInvalidate(ltq_a,a);                        
                     }
                     break;
                 }
-                a.OnStop();
+                a.OnStopInternal();
             }
 
             /// <summary>
@@ -430,11 +493,10 @@ namespace UnityExt.Core {
                 if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable)p_interface; if(!lfu.li.Contains(itf)) lfu.li.Add(itf); }
                 if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable)p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
                 if(p_interface is IThreadUpdateable) {
-                    IThreadUpdateable itf = (IThreadUpdateable)p_interface;
-                    //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way                    
-                    if(ltq_i.Contains(itf)) return;
-                    //Add and trigger the thread creation if not created
-                    ltq_i.Add(itf); 
+                    IThreadUpdateable itf = (IThreadUpdateable)p_interface;                    
+                    //Safely add the element
+                    SafeAdd(ltq_i,itf);
+                    //Assert for thread creation
                     AssertThread();
                 }
             }
@@ -451,20 +513,13 @@ namespace UnityExt.Core {
                 if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable) p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
                 if(p_interface is IThreadUpdateable) {
                     IThreadUpdateable itf = (IThreadUpdateable)p_interface;
-                    int idx = -1;
                     //Search for the interface and null it for next pruning
                     for(int i=0;i<lt.Length;i++) {
                         List<IThreadUpdateable> it = lt[i];
-                        idx = it.li.IndexOf(itf); 
-                        if(idx<0) continue;
-                        it.li[idx] = null;                             
-                        break;
-                    }             
-                    //Skip if found
-                    if(idx>=0) return;
-                    //Search the queue too
-                    idx = ltq_i.IndexOf(itf); 
-                    if(idx>=0 && idx<ltq_i.Count) ltq_i[idx] = null;
+                        if(it.Invalidate(itf)) break;
+                    }                     
+                    //Also clear in queue
+                    SafeInvalidate(ltq_i,itf);                    
                 }
             }
 
@@ -535,8 +590,8 @@ namespace UnityExt.Core {
             /// <param name="p_context"></param>
             /// <returns></returns>
             public System.Collections.Generic.List<Activity> FindAll(string p_id,Activity.Context p_context) {
-            //Local ref
-            System.Collections.Generic.List<Activity> res = new System.Collections.Generic.List<Activity>();
+                //Local ref
+                SCG.List<Activity> res = new SCG.List<Activity>();
                 //Shortcut bool
                 bool all_ctx = ((int)p_context)<0;
                 //Search threads if threaded or all ctxs
@@ -597,10 +652,9 @@ namespace UnityExt.Core {
                 //If kill switch skip
                 if(thread_kill_flag) return;
                 //Thread index
-                int idx = p_index;
-                List<IThreadUpdateable> l = lt[idx];
+                int idx = p_index;                
                 //If no nodes executing and no nodes queued skip
-                if(l.IsEmpty()) if(ltq_a.Count<=0) if(ltq_i.Count<=0) return;
+                if(AssertThreadEmpty(idx)) return;
                 //Fetch thread and its state
                 Thread  thd   = thdl[idx];                
                 int     thd_s = thd==null ? -1 : (int)thd.ThreadState;
@@ -610,25 +664,45 @@ namespace UnityExt.Core {
                     if(thd_s == 32) return; //WaitSleepJoin
                 }
                 //Create and start the thread
-                thd = new System.Threading.Thread(
-                delegate() { 
-                    while(true) {
-                        //If kill thread clear all and break out, reset the flag
-                        if(thread_kill_flag) break;
-                        //If current queuing slot
-                        bool will_queue = idx == thread_queue_target_a;
-                        //Execute all nodes
-                        ThreadUpdate(l,idx);
-                        //Sleep 0 to yield CPU if possible
-                        System.Threading.Thread.Sleep(0);
-                        //Stop the thread if no nodes
-                        if(l.IsEmpty()) if(ltq_a.Count<=0) if(ltq_i.Count<=0) break;
-                    }
-                    thdl[idx]=null;                    
-                });
+                thd = new Thread(ThreadLoop);
                 thd.Name = "activity-thread-"+idx;
                 thdl[idx] = thd;
-                thd.Start();                                
+                thd.Start(p_index);
+            }
+
+            /// <summary>
+            /// Thread main method.
+            /// </summary>
+            /// <param name="p_index">Index of the thread</param>
+            internal void ThreadLoop(object p_index) {
+                int idx = (int)p_index;
+                List<IThreadUpdateable> l = lt[idx];
+                while(true) {
+                    //If kill thread clear all and break out, reset the flag
+                    if(thread_kill_flag) break;                        
+                    //Execute all nodes
+                    ThreadUpdate(l,idx);
+                    //Sleep 0 to yield CPU if possible
+                    Thread.Sleep(0);
+                    //Stop the thread if no nodes                        
+                    if(AssertThreadEmpty(idx)) break;                        
+                }
+                thdl[idx]=null;
+            }
+
+            /// <summary>
+            /// Assert all thread lists and queues for being empty.
+            /// </summary>
+            /// <param name="p_index"></param>
+            /// <returns></returns>
+            protected bool AssertThreadEmpty(int p_index) {
+                List<IThreadUpdateable> l = lt[p_index];
+                bool is_empty = false;                
+                int ltq_ac = ltq_a==null    ? 0 : ltq_a.Count;
+                int ltq_ic = ltq_i==null    ? 0 : ltq_i.Count;
+                int ltq_jc = ltq_jobs==null ? 0 : ltq_jobs.Count;
+                if(l.IsEmpty()) if(ltq_jc<=0) if(ltq_ac<=0) if(ltq_ic<=0) is_empty=true;                
+                return is_empty;
             }
 
             /// <summary>
@@ -656,44 +730,95 @@ namespace UnityExt.Core {
             /// ThreadUpdate Loop
             /// </summary>
             internal void ThreadUpdate(List<IThreadUpdateable> p_list,int p_index) {
-                //Fetch the update list
-                List<IThreadUpdateable> l = p_list;
-                //Move new queued activity into the main list
-                if(p_index == thread_queue_target_a) {
+
+                List<IThreadUpdateable> l = null;
+                
+                //All 'lock' operands will help prevent race conditions during list manipulation
+
+                //Execute jobs for queueing and invalidating in general
+                lock(this) {
+                    for(int i = 0; i<ltq_jobs.Count; i++) if(ltq_jobs[i]!=null)ltq_jobs[i]();
+                    ltq_jobs.Clear();
+                }
+    
+                lock(this) { 
                     //Insert activities from queue
-                    while(ltq_a.Count>0) {
+                    while(ltq_a.Count>0) {            
+                        //Fetch the target list for queueing
+                        l = lt[thread_queue_target_a];
                         //Dequeue elements until insertion
-                        Activity a = ltq_a[0];
-                        ltq_a.RemoveAt(0);
-                        //Skip invalid
-                        if(a==null) continue;
-                        //Skip invalid
-                        if(l.la.Contains(a)) continue;
-                        //Add the element and increment-loop the next thread
-                        l.la.Add(a);
-                        thread_queue_target_a = (thread_queue_target_a+1)%lt.Length;
-                        break;
+                        Activity a = SafeDequeue(ltq_a);                        
+                        //Safely add the activity
+                        l.SafeAdd(a);
+                        //Iterate next element
+                        thread_queue_target_a = (thread_queue_target_a+1)%lt.Length;                            
                     }
                 }
-                //Move new queued interfaces into the main list
-                if(p_index == thread_queue_target_i) {
+                    
+                //Move new queued interfaces into the main list                    
+                lock(this) { 
                     //Insert interfaces from queue
-                    while(ltq_i.Count>0) {
+                    while(ltq_i.Count>0) {                  
+                        //Fetch the target list for queueing
+                        l = lt[thread_queue_target_i];
                         //Dequeue elements until insertion
-                        IThreadUpdateable itf = ltq_i[0];
-                        ltq_i.RemoveAt(0);
-                        //Skip invalid
-                        if(itf==null) continue;
-                        //Skip invalid
-                        if(l.li.Contains(itf)) continue;
-                        //Add the element and increment-loop the next thread
-                        l.li.Add(itf);
+                        IThreadUpdateable itf = SafeDequeue(ltq_i);
+                        //Safely add the new element
+                        l.SafeAdd(itf);
+                        //Iterate next element
                         thread_queue_target_i = (thread_queue_target_i+1)%lt.Length;
                         break;
                     }
-                }                                
+                }
+                    
+                                             
                 //Executes threaded nodes.
-                l.Execute();                
+                p_list.Execute();
+            }
+
+            /// <summary>
+            /// Safely dequeue the first element.
+            /// </summary>
+            /// <typeparam name="T"></typeparam>
+            /// <param name="p_list"></param>
+            /// <returns></returns>
+            internal T SafeDequeue<T>(SCG.List<T> p_list) {
+                T a = default(T);
+                a = p_list.Count<=0 ? default(T) : p_list[0];
+                if(p_list.Count>0) p_list.RemoveAt(0);                    
+                return a;
+            }
+
+            /// <summary>
+            /// Safely invalidate an item to null
+            /// </summary>
+            /// <typeparam name="T"></typeparam>
+            /// <param name="p_list"></param>
+            /// <param name="p_item"></param>
+            /// <returns></returns>
+            internal bool SafeInvalidate<T>(SCG.List<T> p_list,T p_item) {
+                int idx = p_list.IndexOf(p_item);
+                ltq_jobs.Add(delegate() {                     
+                    //Search by index
+                    idx = p_list.IndexOf(p_item); 
+                    //Invalidate at index
+                    if(idx>=0) p_list[idx] = default(T);                                    
+                });
+                return idx>=0;
+            }
+
+            /// <summary>
+            /// Safely adds an element.
+            /// </summary>
+            /// <typeparam name="T"></typeparam>
+            /// <param name="p_list"></param>
+            /// <param name="p_item"></param>
+            /// <returns></returns>
+            internal T SafeAdd<T>(SCG.List<T> p_list,T p_item) {
+                ltq_jobs.Add(delegate() { 
+                    if(!p_list.Contains(p_item)) p_list.Add(p_item);
+                });                
+                return p_item;
             }
 
             #endregion

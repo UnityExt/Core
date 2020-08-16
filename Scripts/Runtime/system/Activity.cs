@@ -14,83 +14,11 @@ using UnityEditor;
 
 namespace UnityExt.Core {
 
-    #region Interfaces
-
-    /// <summary>
-    /// Interfaces for objects that wants to perform update loops.
-    /// </summary>
-    public interface IUpdateable { 
-        /// <summary>
-        /// Runs inside Monobehaviour.Update
-        /// </summary>
-        void OnUpdate(); 
-    }
-    
-    /// <summary>
-    /// Interfaces for objects that wants to perform late update loops.
-    /// </summary>
-    public interface ILateUpdateable { 
-        /// <summary>
-        /// Runs inside Monobehaviour.LateUpdate
-        /// </summary>
-        void OnLateUpdate(); 
-    }
-
-    /// <summary>
-    /// Interfaces for objects that wants to perform fixed update loops.
-    /// </summary>
-    public interface IFixedUpdateable { 
-        /// <summary>
-        /// Runs inside Monobehaviour.FixedUpdate
-        /// </summary>
-        void OnFixedUpdate(); 
-    }
-    
-    /// <summary>
-    /// Interfaces for objects that wants to perform update loops not bound by frames
-    /// </summary>
-    public interface IAsyncUpdateable { 
-        /// <summary>
-        /// Runs inside Monobehaviour.Update and only during the 'async-slice' duration per frame, so it can skip a few frames depending on the execution load.
-        /// </summary>
-        void OnAsyncUpdate(); 
-    }
-
-    /// <summary>
-    /// Interfaces for objects that wants to perform update loops inside a thread
-    /// </summary>
-    public interface IThreadUpdateable { 
-        /// <summary>
-        /// Runs inside a thread
-        /// </summary>
-        void OnThreadUpdate(); 
-    }
-
-    /// <summary>
-    /// Interface that helps job instances to be notified before and after execution to perform data management.
-    /// </summary>
-    public interface IJobComponent {
-        /// <summary>
-        /// Method called before either Run or Schedule in main thread.
-        /// </summary>        
-        void OnInit();
-        /// <summary>
-        /// Method called after either Run or Schedule in main thread.
-        /// </summary>        
-        void OnComplete();
-        /// <summary>
-        /// Method called after the activity is complete or stopped and left the execution pool.
-        /// </summary>        
-        void OnDestroy();
-    }
-
-    #endregion
-
     /// <summary>
     /// Class that implements any async activity/processing.
     /// It can run in different contexts inside unity (mainthread) or separate thread, offering an abstraction layer Monobehaviour/Thread agnostic.
     /// </summary>
-    public class Activity : INotifyCompletion {
+    public class Activity : INotifyCompletion, IStatusProvider, IProgressProvider {
 
         #region enum Context
 
@@ -175,8 +103,6 @@ namespace UnityExt.Core {
         }
 
         #endif
-
-        
 
         /// <summary>
         /// Behaviour to handle all activity  executions.
@@ -266,7 +192,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Maximum created threads for paralell nodes.
         /// </summary>
-        static public int maxThreadCount = 4;
+        static public int maxThreadCount = Mathf.Max(2,Mathf.Min(Environment.ProcessorCount,6));
 
         #region CRUD
 
@@ -441,15 +367,42 @@ namespace UnityExt.Core {
         /// </summary>
         public bool completed { get { return state == State.Complete; } }
 
+        #region Events
+
         /// <summary>
         /// Callback for completion.
         /// </summary>
-        public System.Action<Activity> OnCompleteEvent;
+        public Action<Activity> OnCompleteEvent {
+            get { return (Action<Activity>)m_on_complete_event; }
+            set { m_on_complete_event = value;                  }
+        }
+        protected Delegate m_on_complete_event;
 
         /// <summary>
         /// Callback for execution.
         /// </summary>
-        public System.Predicate<Activity> OnExecuteEvent;
+        public Predicate<Activity> OnExecuteEvent {
+            get { return (Predicate<Activity>)m_on_execute_event; }
+            set { m_on_execute_event = value;                  }
+        }
+        protected Delegate m_on_execute_event;
+
+        /// <summary>
+        /// Auxiliary class to method invoke.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="p_event"></param>
+        /// <param name="p_arg"></param>
+        /// <returns></returns>
+        virtual internal bool InvokeEvent(Delegate p_event,Activity p_arg,bool p_default=false) {
+            bool res = p_default;
+            if(p_event==null) return res;
+            if(p_event is Action<Activity>)    { Action<Activity>    cb = (Action<Activity>)p_event;          cb(this); } else
+            if(p_event is Predicate<Activity>) { Predicate<Activity> cb = (Predicate<Activity>)p_event; res = cb(this); }
+            return res;
+        }
+
+        #endregion
 
         /// <summary>
         /// Helper task to use await.
@@ -490,7 +443,7 @@ namespace UnityExt.Core {
             id          = string.IsNullOrEmpty(p_id) ? tn+"-"+GetHashCode().ToString("x6") : p_id;                             
         }
         private string m_type_name;
-
+        
         #endregion
 
         /// <summary>
@@ -508,7 +461,7 @@ namespace UnityExt.Core {
                 m_yield_ms    = 0;
             }            
             //Add to execution queue
-            if(manager)manager.handler.AddActivity(this);
+            if(manager)manager.handler.AddActivity(this);            
         }
         private void OnTaskCompleteDummy() {    
             //Sleep is inside task thread, so safe to use
@@ -524,19 +477,6 @@ namespace UnityExt.Core {
         public void Stop() { if(manager)manager.handler.RemoveActivity(this); }
 
         /// <summary>
-        /// Handler for when the activity was removed.
-        /// </summary>
-        virtual internal void OnStop() { 
-            //Only run if not completed
-            if(state == State.Complete) return;
-            state = State.Stopped;
-            if(m_task==null) return;
-            m_task_cancel.Cancel();
-            m_task        = null;
-            m_task_cancel = null;
-        }
-
-        /// <summary>
         /// Executes one loop step.
         /// </summary>
         virtual internal void Execute() {
@@ -545,7 +485,8 @@ namespace UnityExt.Core {
                 case State.Complete: return;
                 case State.Idle:     return;
                 case State.Queued:  { 
-                    if(!CanStart())   return;
+                    if(!CanStart())         break;
+                    if(!CanStartInternal()) break;
                     OnStart();                    
                     state=State.Running; 
                 }
@@ -553,24 +494,27 @@ namespace UnityExt.Core {
             }
             switch(state) {
                 case State.Running:  {
-                    //Execute the job loop
-                    bool v0 = OnExecuteJob();
-                    //Repeat until 'completed == true' (always true for regular activity)
-                    if(!v0) break;
-                    //Execute main activity thread
+                    //Internal execution
+                    bool v0 = OnExecuteInternal();
+                    //Repeat until completion (always completed for regular activity)
+                    if(v0)  break;
+                    //Execute main activity handler
                     bool v1 = OnExecute();
-                    //Default delegate always completed
-                    bool v2 = true;
-                    //Execute delegate and check result
-                    if(OnExecuteEvent!=null) v1 = OnExecuteEvent(this);
-                    //Repeat until all steps are done
-                    if(v0) if(v1) if(v2) break;
+                    //Default delegate always completed if undefined
+                    bool v2 = InvokeEvent(m_on_execute_event,this,false);
+                    //Early break if either execution wants to continue
+                    if(v1) break;
+                    if(v2) break;
+                    //Extra validate completion
+                    bool v3 = CanCompleteInternal();
+                    //If can't complete keep going
+                    if(!v3) break;
                     //Mark complete
                     state = State.Complete;
                     //Call internal handler
                     OnComplete();
                     //Call delegate
-                    if(OnCompleteEvent!=null) OnCompleteEvent(this);
+                    InvokeEvent(m_on_complete_event,this);
                     //Start 'await' Task
                     if(m_task!=null) m_task.Start();                    
                 }
@@ -581,6 +525,11 @@ namespace UnityExt.Core {
         #region Virtuals
 
         /// <summary>
+        /// Handler for when this activity was just added.
+        /// </summary>
+        virtual protected void OnAdded() { }
+
+        /// <summary>
         /// Handler for activity execution start
         /// </summary>
         virtual protected void OnStart() { }
@@ -589,7 +538,7 @@ namespace UnityExt.Core {
         /// Handler for activity execution loop steps.
         /// </summary>
         /// <returns>Flag telling the execution loop must continue or not</returns>
-        virtual protected bool OnExecute() { return OnExecuteEvent!=null; }
+        virtual protected bool OnExecute() { return false; }
 
         /// <summary>
         /// Handler for activity completion.
@@ -597,16 +546,58 @@ namespace UnityExt.Core {
         virtual protected void OnComplete() { }
 
         /// <summary>
+        /// Handler for the activity stop.
+        /// </summary>
+        virtual protected void OnStop() { }
+
+        /// <summary>
         /// Auxiliary method to validate if starting is allowed.
         /// </summary>
         /// <returns>Flag telling the activity can start and execute its loop, otherwise will keep looping here and 'Queued'</returns>
         virtual protected bool CanStart() { return true; }
 
+        #endregion
+
+        #region Internal Extensions
+
         /// <summary>
         /// Helper method to handle unity jobs.
         /// </summary>
         /// <returns></returns>
-        virtual internal bool OnExecuteJob() { return true; }
+        virtual internal bool OnExecuteInternal() { return false; }
+
+        /// <summary>
+        /// Helper to allow the activity to start or not.
+        /// </summary>
+        /// <returns></returns>
+        virtual internal bool CanStartInternal()  { return true; }
+
+        /// <summary>
+        /// Helper to allow the activity to complete or not.
+        /// </summary>
+        /// <returns></returns>
+        virtual internal bool CanCompleteInternal()  { return true; }
+
+        /// <summary>
+        /// Handler for when the activity was removed.
+        /// </summary>
+        virtual internal void OnStopInternal() { 
+            //Only run if not completed
+            if(state == State.Complete) return;
+            state = State.Stopped;
+            if(m_task==null) return;
+            m_task_cancel.Cancel();
+            m_task        = null;
+            m_task_cancel = null;
+            OnStop();
+        }
+
+        /// <summary>
+        /// Handler for when this activity was just added.
+        /// </summary>
+        virtual internal void OnAddedInternal() { 
+            OnAdded(); 
+        }
 
         #endregion
 
@@ -630,6 +621,44 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="completed">Continue callback.</param>
         public void OnCompleted(System.Action completed) { completed(); }
+
+        #endregion
+
+        #region IStatusProvider
+
+        /// <summary>
+        /// Returns this activity execution state converted to status flags.
+        /// </summary>
+        /// <returns>Current activity status</returns>
+        public StatusFlag GetStatus() {
+            switch(state) {
+                case State.Idle:
+                case State.Queued:   return StatusFlag.Idle;
+                case State.Running:  return StatusFlag.Running;
+                case State.Complete: return StatusFlag.Success;
+                case State.Stopped:  return StatusFlag.Cancelled;
+            }
+            return StatusFlag.Invalid;
+        }
+
+        #endregion
+
+        #region IProgressProvider
+
+        /// <summary>
+        /// Returns this activity progress status
+        /// </summary>
+        /// <returns>Activity progress, eihter 0.0 = not running, 0.5f = running and 1.0 = complete/stopped.</returns>
+        virtual public float GetProgress() {
+            switch(state) {
+                case State.Idle:  
+                case State.Queued:   return 0f;
+                case State.Running:  return 0.5f;
+                case State.Complete: return 1f;
+                case State.Stopped:  return 1f;
+            }
+            return 0f;
+        }
 
         #endregion
 
@@ -765,6 +794,8 @@ namespace UnityExt.Core {
         /// </summary>
         public Activity() { InitActivity("",true); }
 
+        #region InitActivity
+
         /// <summary>
         /// Internal build the activity for jobs.
         /// </summary>
@@ -854,6 +885,8 @@ namespace UnityExt.Core {
 
         #endregion
 
+        #endregion
+
         /// <summary>
         /// Overrides the base class allowing to switch between job and jobsync
         /// </summary>
@@ -904,26 +937,32 @@ namespace UnityExt.Core {
         /// <summary>
         /// Handles when the job leaves the execution pool.
         /// </summary>
-        internal override void OnStop() {
-            base.OnStop();
-            //No need to run because 'complete' already did it
-            if(state == State.Complete) return;
-            //Ensure completion and clears handle
-            if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
-            //Calls the job component complete callback
-            if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnDestroy(); job = (T)itf; }
+        internal override void OnStopInternal() {
+            switch(state) {
+                //No need to run because 'complete' already did it
+                case State.Complete: break;
+                default: {
+                    //Ensure completion and clears handle
+                    if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
+                    //Calls the job component complete callback
+                    if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnDestroy(); job = (T)itf; }
+                }
+                break;
+            }
+            //Execute the rest of the stopping and signal extension's 'OnStop'
+            base.OnStopInternal();
         }
 
         /// <summary>
         /// Overrides to handle unity's job execution
         /// </summary>
         /// <returns></returns>
-        internal override bool OnExecuteJob() {
-            //If no job instance return 'true == completed'
-            if(!m_has_job) return true;
-            //Invalid contexts return 'true == completed'
+        internal override bool OnExecuteInternal() {
+            //If no job instance return 'complete'
+            if(!m_has_job) return false;
+            //Invalid contexts return 'complete'
             if(context != Context.Job) 
-            if(context != Context.JobAsync) return true;
+            if(context != Context.JobAsync) return false;
             //If type is parallel and length/steps are set
             bool is_parallel = m_has_job_parallel ? (m_job_parallel_length>=0 && m_job_parallel_step>=0) : false;                                    
             //Init the local variables
@@ -937,8 +976,8 @@ namespace UnityExt.Core {
                 case Context.JobAsync:      { job_fn = is_parallel ? m_jbpf_schedule : m_jb_schedule;  job_fn_args = is_parallel ? m_args4 : m_args2; } break;
             }            
             //If invalids return 'completed'
-            if(job_fn_args == null) return true;
-            if(job_fn      == null) return true;
+            if(job_fn_args == null) return false;
+            if(job_fn      == null) return false;
             //Flag that tells Run/Schedule should be called.
             bool will_invoke = false;
             //Prepare arguments for Run/Schedule based on context
@@ -997,14 +1036,14 @@ namespace UnityExt.Core {
                 is_completed = m_job_frame_limit<=4 ? true : is_completed;
             }
             //*/
-            //Return if not completed
-            if(!is_completed) return false;
+            //Continue if not completed
+            if(!is_completed) return true;
             //Ensure completion and clears handle
             if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
             //Calls the job component complete callback
             if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnComplete(); job = (T)itf; }
             //Return 'completed'
-            return true;
+            return false;
         }
 
     }
