@@ -1,11 +1,11 @@
-using System;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using SCG = System.Collections.Generic;
 using System.Threading;
+using System;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Sys {
 
     /// <summary>
     /// Class that implements the management of a set of interfaces and activities.
@@ -23,7 +23,7 @@ namespace UnityExt.Core {
                 /// <summary>
                 /// Activities
                 /// </summary>
-                public System.Collections.Generic.List<Activity> la;
+                public SCG.List<Activity> la;
 
                 /// <summary>
                 /// Current iterator for activities
@@ -44,7 +44,7 @@ namespace UnityExt.Core {
                 /// CTOR.
                 /// </summary>
                 public List(ActivityContext p_context) {
-                    la = new System.Collections.Generic.List<Activity>(15000);
+                    la = new SCG.List<Activity>(15000);
                     ia = 0;
                     context = p_context;
                     timer   = context == ActivityContext.Async  ? new System.Diagnostics.Stopwatch() : null;                    

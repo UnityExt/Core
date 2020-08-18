@@ -2,8 +2,9 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityExt.Core.Sys;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Motion {
 
     #region enum TweenWrap
 

@@ -6,7 +6,7 @@ using UnityEngine.Scripting;
 using System.Collections.Generic;
 using System.Text;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.UI {
 
     /// <summary>
     /// Utility component that captures execution statistics and plot a simplified graph and update fields with stats.

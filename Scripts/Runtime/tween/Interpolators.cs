@@ -3,8 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
+using UnityExt.Core.Sys;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Motion {
 
     #region class Interpolator
 
@@ -749,7 +750,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'sbyte'
     /// </summary>
-    internal class SByteInterpolator   : Interpolator<sbyte>   { 
+    public class SByteInterpolator   : Interpolator<sbyte>   { 
         protected override void  SetFromField()          { from = GetSByte(); }
         protected override void  SetProperty(sbyte p_value) { SetSByte(p_value); }
         protected override sbyte LerpValue(float p_ratio) { float dv  = (float)(to-from); sbyte   off = (sbyte)(dv*p_ratio);  return (sbyte)(from + off); } 
@@ -757,7 +758,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'byte'
     /// </summary>
-    internal class ByteInterpolator    : Interpolator<byte>    { 
+    public class ByteInterpolator    : Interpolator<byte>    { 
         protected override void SetFromField()          { from = GetByte(); }
         protected override void SetProperty(byte p_value) { SetByte(p_value); }
         protected override byte LerpValue(float p_ratio) { float dv  = (float)(to-from); byte    off = (byte)(dv*p_ratio);   return (byte)(from + off); } 
@@ -765,7 +766,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'ushort'
     /// </summary>
-    internal class UShortInterpolator  : Interpolator<ushort>  { 
+    public class UShortInterpolator  : Interpolator<ushort>  { 
         protected override void SetFromField()           { from = GetUShort(); }
         protected override void SetProperty(ushort p_value) { SetUShort(p_value); }
         protected override ushort LerpValue(float p_ratio) { float dv  = (float)(to-from); ushort  off = (ushort)(dv*p_ratio); return (ushort)(from + off); } 
@@ -773,7 +774,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'short'
     /// </summary>
-    internal class ShortInterpolator   : Interpolator<short>   { 
+    public class ShortInterpolator   : Interpolator<short>   { 
         protected override void  SetFromField()          { from = GetShort(); }
         protected override void  SetProperty(short p_value) { SetShort(p_value); }
         protected override short LerpValue(float p_ratio) { float dv  = (float)(to-from); short   off = (short)(dv*p_ratio);  return (short)(from + off); } 
@@ -781,7 +782,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'uint'
     /// </summary>
-    internal class UIntInterpolator    : Interpolator<uint>    { 
+    public class UIntInterpolator    : Interpolator<uint>    { 
         protected override void SetFromField()           { from = GetUInt(); }
         protected override void SetProperty(uint p_value)   { SetUInt(p_value); }
         protected override uint LerpValue(float p_ratio) { float dv  = (float)(to-from);  uint   off = (uint)(dv*p_ratio);   return from + off; } 
@@ -789,7 +790,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'int'
     /// </summary>
-    internal class IntInterpolator     : Interpolator<int>     { 
+    public class IntInterpolator     : Interpolator<int>     { 
         protected override void SetFromField()          { from = GetInt(); }
         protected override void SetProperty(int p_value)   { SetInt(p_value); }
         protected override int  LerpValue(float p_ratio) { float dv  = (float)(to-from);  int    off = (int)(dv*p_ratio);    return from + off; } 
@@ -797,7 +798,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'ulong'
     /// </summary>
-    internal class ULongInterpolator   : Interpolator<ulong>   { 
+    public class ULongInterpolator   : Interpolator<ulong>   { 
         protected override void SetFromField()          { from = GetULong(); }
         protected override void SetProperty(ulong p_value) { SetULong(p_value); }
         protected override ulong  LerpValue(float p_ratio) { double dv = (double)(to-from); ulong  off = (ulong)(dv*p_ratio);  return from + off; } 
@@ -805,7 +806,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'ulong'
     /// </summary>
-    internal class LongInterpolator    : Interpolator<long>    { 
+    public class LongInterpolator    : Interpolator<long>    { 
         protected override void SetFromField()         { from = GetLong(); }
         protected override void SetProperty(long p_value) { SetLong(p_value); }
         protected override long LerpValue(float p_ratio) { double dv  = (double)(to-from); long  off = (long)(dv*p_ratio);   return from + off; } 
@@ -813,7 +814,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'float'
     /// </summary>
-    internal class FloatInterpolator   : Interpolator<float>   { 
+    public class FloatInterpolator   : Interpolator<float>   { 
         protected override void  SetFromField()          { from = GetFloat(); }
         protected override void  SetProperty(float p_value) { SetFloat(p_value); }
         protected override float LerpValue(float p_ratio) { float dv  = (float)(to-from);  float  off = (float)(dv*p_ratio);  return from + off; } 
@@ -821,7 +822,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'double'
     /// </summary>
-    internal class DoubleInterpolator  : Interpolator<double>  { 
+    public class DoubleInterpolator  : Interpolator<double>  { 
         protected override void   SetFromField()           { from = GetDouble(); }
         protected override void   SetProperty(double p_value) { SetDouble(p_value); }
         protected override double LerpValue(float p_ratio)    { float dv  = (float)(to-from);  double off = (double)(dv*p_ratio); return from + off; } 
@@ -950,8 +951,13 @@ namespace UnityExt.Core {
     #endregion
 
     #region class UnityVectorInterpolator<T>
-
-    internal class UnityVectorInterpolator<T> : Interpolator<T> {
+    
+    /// <summary>
+    /// Base class for all unity related types interpolations.
+    /// Using the 'mask' attribute its possible to selectively change only components of Vector types.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    public class UnityVectorInterpolator<T> : Interpolator<T> {
         
         /// <summary>
         /// Component selection mask.
@@ -978,7 +984,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector2'
     /// </summary>
-    internal class Vector2Interpolator    : UnityVectorInterpolator<Vector2>     { 
+    public class Vector2Interpolator    : UnityVectorInterpolator<Vector2>     { 
         protected override void  SetFromField()            { from = GetVector2(); }
         protected override void  SetProperty(Vector2 p_value) { SetVector2(p_value); }
         protected override Vector2    LerpValue(float p_ratio) { Vector2   dv  = (Vector2)(to-from);      Vector2    off = ApplyMask(dv*p_ratio); return from + off; } 
@@ -986,7 +992,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector2Int'
     /// </summary>
-    internal class Vector2IntInterpolator : UnityVectorInterpolator<Vector2Int>  { 
+    public class Vector2IntInterpolator : UnityVectorInterpolator<Vector2Int>  { 
         protected override void  SetFromField()            { from = GetVector2Int(); }
         protected override void  SetProperty(Vector2Int p_value) { SetVector2Int(p_value); }
         protected override Vector2Int LerpValue(float p_ratio) { Vector2   dv  = (Vector2)(to-from);      Vector2    off = ApplyMask(dv*p_ratio); return from + new Vector2Int((int)off.x,(int)off.y); } 
@@ -994,7 +1000,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector3'
     /// </summary>
-    internal class Vector3Interpolator    : UnityVectorInterpolator<Vector3>     { 
+    public class Vector3Interpolator    : UnityVectorInterpolator<Vector3>     { 
         protected override void  SetFromField()            { from = GetVector3(); }
         protected override void  SetProperty(Vector3 p_value) { SetVector3(p_value); }
         protected override Vector3    LerpValue(float p_ratio) { Vector3    dv  = (Vector3)(to-from);     Vector3    off = ApplyMask(dv*p_ratio);  return from + off; } 
@@ -1002,7 +1008,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector3Int'
     /// </summary>
-    internal class Vector3IntInterpolator : UnityVectorInterpolator<Vector3Int>  { 
+    public class Vector3IntInterpolator : UnityVectorInterpolator<Vector3Int>  { 
         protected override void  SetFromField()               { from = GetVector3Int(); }
         protected override void  SetProperty(Vector3Int p_value) { SetVector3Int(p_value); }
         protected override Vector3Int LerpValue(float p_ratio) { Vector3   dv  = (Vector3)(to-from);      Vector3    off = ApplyMask(dv*p_ratio); return from + new Vector3Int((int)off.x,(int)off.y,(int)off.z); } 
@@ -1010,7 +1016,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector4'
     /// </summary>
-    internal class Vector4Interpolator    : UnityVectorInterpolator<Vector4>     { 
+    public class Vector4Interpolator    : UnityVectorInterpolator<Vector4>     { 
         protected override void  SetFromField()             { from = GetVector4(); }
         protected override void  SetProperty(Vector4 p_value)  { SetVector4(p_value); }
         protected override Vector4    LerpValue(float p_ratio) { Vector4    dv  = (Vector4)(to-from);     Vector4    off = ApplyMask(dv*p_ratio); return from + off; } 
@@ -1018,7 +1024,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Color'
     /// </summary>
-    internal class ColorInterpolator    : UnityVectorInterpolator<Color>         { 
+    public class ColorInterpolator    : UnityVectorInterpolator<Color>         { 
         protected override void  SetFromField()           { from = GetColor(); }
         protected override void  SetProperty(Color p_value)  { SetColor(p_value); }
         protected override Color      LerpValue(float p_ratio) { 
@@ -1031,7 +1037,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Quaternion'
     /// </summary>
-    internal class QuaternionInterpolator : UnityVectorInterpolator<Quaternion>  { 
+    public class QuaternionInterpolator : UnityVectorInterpolator<Quaternion>  { 
         protected override void  SetFromField()               { from = GetQuaternion(); }
         protected override void  SetProperty(Quaternion p_value) { SetQuaternion(p_value); }
         protected override Quaternion LerpValue(float p_ratio) {             
@@ -1047,7 +1053,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Rect'
     /// </summary>
-    internal class RectInterpolator : UnityVectorInterpolator<Rect> {
+    public class RectInterpolator : UnityVectorInterpolator<Rect> {
         protected override void  SetFromField()          { from = GetRect(); }
         protected override void  SetProperty(Rect p_value)  { SetRect(p_value); }
         protected override Rect LerpValue(float p_ratio) {             
@@ -1060,7 +1066,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Color32'
     /// </summary>
-    internal class Color32Interpolator  : UnityVectorInterpolator<Color32> { 
+    public class Color32Interpolator  : UnityVectorInterpolator<Color32> { 
         protected override void  SetFromField()           { from = GetColor32(); }
         protected override void  SetProperty(Color32 p_value)  { SetColor32(p_value); }
         protected override Color32 LerpValue(float p_ratio) {             
@@ -1076,7 +1082,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'RangeInt'
     /// </summary>
-    internal class RangeIntInterpolator  : UnityVectorInterpolator<RangeInt> { 
+    public class RangeIntInterpolator  : UnityVectorInterpolator<RangeInt> { 
         protected override void  SetFromField()              { from = GetRangeInt(); }
         protected override void  SetProperty(RangeInt p_value)  { SetRangeInt(p_value); }
         protected override RangeInt LerpValue(float p_ratio) {             
@@ -1090,7 +1096,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Ray'
     /// </summary>
-    internal class RayInterpolator : UnityVectorInterpolator<Ray> {
+    public class RayInterpolator : UnityVectorInterpolator<Ray> {
         protected override void  SetFromField()         { from = GetRay(); }
         protected override void  SetProperty(Ray p_value)  { SetRay(p_value); }
         protected override Ray LerpValue(float p_ratio) {             
@@ -1103,7 +1109,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Ray2D'
     /// </summary>
-    internal class Ray2DInterpolator : UnityVectorInterpolator<Ray2D> {
+    public class Ray2DInterpolator : UnityVectorInterpolator<Ray2D> {
         protected override void  SetFromField()         { from = GetRay2D(); }
         protected override void  SetProperty(Ray2D p_value)  { SetRay2D(p_value); }
         protected override Ray2D LerpValue(float p_ratio) {             

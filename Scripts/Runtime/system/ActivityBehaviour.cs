@@ -1,8 +1,6 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Sys {
 
     /// <summary>
     /// Component that extends a Monobehaviour so it can execute inside the activity manager context instead of the slow unity loop.
