@@ -6,28 +6,28 @@ using UnityEngine;
 
 namespace UnityExt.Core {
 
+    #region enum TimerType
+
+    /// <summary>
+    /// Timer running mode.
+    /// </summary>
+    public enum TimerType {
+        /// <summary>
+        /// Runs using unity's time tracking.
+        /// </summary>
+        Unity,
+        /// <summary>
+        /// Runs using a stopwatch class and track time out if the main thread.
+        /// </summary>
+        System            
+    }
+
+    #endregion
+
     /// <summary>
     /// Class that extends an Activity to give support of time tracking, laps and delayed execution start.
     /// </summary>
     public class Timer : Activity, IProgressProvider {
-
-        #region enum Mode
-
-        /// <summary>
-        /// Timer running mode.
-        /// </summary>
-        public enum Type {
-            /// <summary>
-            /// Runs using unity's time tracking.
-            /// </summary>
-            Unity,
-            /// <summary>
-            /// Runs using a stopwatch class and track time out if the main thread.
-            /// </summary>
-            System            
-        }
-
-        #endregion
 
         #region static
 
@@ -156,7 +156,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Timer clock type.
         /// </summary>
-        public Type type { get; internal set; }
+        public TimerType type { get; internal set; }
 
         /// <summary>
         /// Number of loop steps to perform, if '0' runs undefinetely.
@@ -174,8 +174,8 @@ namespace UnityExt.Core {
         public float elapsed { 
             get {
                 switch(state) {
-                    case State.Idle:   return 0f;
-                    case State.Queued: return 0f;
+                    case ActivityState.Idle:   return 0f;
+                    case ActivityState.Queued: return 0f;
                 }
                 return m_elapsed;
             }
@@ -209,6 +209,12 @@ namespace UnityExt.Core {
         /// Returns the execution progress of the timer in the [0,1] range.
         /// </summary>
         public float progress { get { return duration<=0f ? 0f : Mathf.Clamp01(elapsed/duration); } }
+
+        /// <summary>
+        /// Speed adjustment for other features.
+        /// </summary>
+        internal float m_speed_internal = 1f;
+
 
         #region Events
 
@@ -265,7 +271,7 @@ namespace UnityExt.Core {
         /// <param name="p_count">Max number of steps before completion.</param>
         /// <param name="p_type">Clock time tracking mode.</param>
         /// <param name="p_context">Activity execution context.</param>
-        public Timer(string p_id,float p_duration,int p_count=1,Type p_type = Type.Unity,Context p_context = Context.Update) : base(p_id,p_context) { CreateTimer(p_duration,p_count,p_type); }
+        public Timer(string p_id,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity,ActivityContext p_context = ActivityContext.Update) : base(p_id,p_context) { CreateTimer(p_duration,p_count,p_type); }
         /// <summary>
         /// Creates a new Timer instance.
         /// </summary>        
@@ -274,18 +280,18 @@ namespace UnityExt.Core {
         /// <param name="p_count">Max number of steps before completion.</param>
         /// <param name="p_type">Clock time tracking mode.</param>
         /// <param name="p_context">Activity execution context.</param>
-        public Timer(float p_duration=0f,int p_count=1,Type p_type = Type.Unity,Context p_context = Context.Update) : base("",p_context) { CreateTimer(p_duration,p_count,p_type); }
+        public Timer(float p_duration=0f,int p_count=1,TimerType p_type = TimerType.Unity,ActivityContext p_context = ActivityContext.Update) : base("",p_context) { CreateTimer(p_duration,p_count,p_type); }
         /// <summary>
         /// Creates a new Timer instance.
         /// </summary>
         /// <param name="p_id">Id of the Timer.</param>
         /// <param name="p_mode">Clock time tracking mode.</param>
-        public Timer(string p_id,Type p_mode = Type.System) : base(p_id, Context.Thread) { CreateTimer(0f,0,p_mode); }
+        public Timer(string p_id,TimerType p_mode = TimerType.System) : base(p_id, ActivityContext.Thread) { CreateTimer(0f,0,p_mode); }
         /// <summary>
         /// Creates a new Timer instance.
         /// </summary>        
         /// <param name="p_type">Clock time tracking mode.</param>
-        public Timer(Type p_type = Type.System) : base("", Context.Thread) { CreateTimer(0f,0,p_type); }                
+        public Timer(TimerType p_type = TimerType.System) : base("", ActivityContext.Thread) { CreateTimer(0f,0,p_type); }                
 
         #endregion
 
@@ -298,7 +304,7 @@ namespace UnityExt.Core {
         /// <param name="p_duration"></param>
         /// <param name="p_count"></param>
         /// <param name="p_mode"></param>
-        internal void CreateTimer(float p_duration,int p_count,Type p_mode) {
+        internal void CreateTimer(float p_duration,int p_count,TimerType p_mode) {
             delay    = 0f;
             duration = p_duration;
             count    = p_count;
@@ -308,10 +314,10 @@ namespace UnityExt.Core {
             m_clock_time = 0f;
             m_elapsed    = 0f;
             switch(type) {
-                case Type.Unity: {
-                    if(context == Context.Thread) {
+                case TimerType.Unity: {
+                    if(context == ActivityContext.Thread) {
                         Debug.LogWarning("Timer> Using Unity.Tiem in Thread context will throw an error. Fallback to 'System'");
-                        type = Type.System;
+                        type = TimerType.System;
                     }                    
                 }
                 break;
@@ -342,8 +348,8 @@ namespace UnityExt.Core {
         public void Restart() {            
             paused = false;
             switch(state) {
-                case State.Queued:
-                case State.Running: {
+                case ActivityState.Queued:
+                case ActivityState.Running: {
                     m_elapsed = 0f;
                     step      = 0;                    
                 }
@@ -362,8 +368,8 @@ namespace UnityExt.Core {
         public void RestartStep() {
             paused = false;
             switch(state) {
-                case State.Queued:
-                case State.Running: {
+                case ActivityState.Queued:
+                case ActivityState.Running: {
                     m_elapsed = 0f;                                        
                 }
                 break;
@@ -383,7 +389,7 @@ namespace UnityExt.Core {
         public float GetClock() {
             float t = 0f;              
             switch(type) {                
-                case Type.Unity:  { 
+                case TimerType.Unity:  { 
                     //Time.unscaledTime isn't affected by editor's pause/step
                     float ivts = Time.timeScale<=0f ? 1f : (1f/Time.timeScale);
                     t = Time.time * (unscaled ? ivts : 1f); 
@@ -393,7 +399,7 @@ namespace UnityExt.Core {
                     #endif
                 }
                 break; 
-                case Type.System: { double ms = (double)m_clock_sys.ElapsedMilliseconds; t = (float)(ms*0.001); } break;
+                case TimerType.System: { double ms = (double)m_clock_sys.ElapsedMilliseconds; t = (float)(ms*0.001); } break;
             }            
             return t - m_clock_stamp;
         }
@@ -417,7 +423,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Timer was just added for queueing and execution.
         /// </summary>
-        internal override void OnAddedInternal() {            
+        internal override void OnManagerAddInternal() {            
             m_elapsed          = 0f;                        
             m_clock_delta_time = 0f;            
             m_clock_stamp      = 0f;
@@ -427,14 +433,14 @@ namespace UnityExt.Core {
         /// <summary>
         /// Called when the time has stopped.
         /// </summary>
-        internal override void OnStopInternal() {            
+        internal override void OnManagerRemoveInternal() {            
             step               = 0;
             m_elapsed          = 0f;                        
             m_clock_delta_time = 0f;            
             m_clock_stamp      = 0f;
             m_clock_time       = 0f;
             paused             = false;
-            base.OnStopInternal();
+            base.OnManagerRemoveInternal();
         }
 
         /// <summary>
@@ -447,7 +453,7 @@ namespace UnityExt.Core {
                 m_elapsed = 0f; 
                 return true; 
             }
-            //Increment 'elapsed' until 'delay'
+            //Increment 'elapsed' until 'delay'            
             m_elapsed += m_clock_delta_time;
             return false;
         }
@@ -464,15 +470,19 @@ namespace UnityExt.Core {
             }
             //Computes the timer own delta-time based on the timestamps
             float t = GetClock();
-            m_clock_delta_time = paused ? 0f : (t - m_clock_time);
+            m_clock_delta_time = paused ? 0f : ((t - m_clock_time)*m_speed_internal);
             m_clock_time = t;
             //If 'running' start updating 'elapsed' past the delay
             switch(state) {
-                case State.Running: {
+                case ActivityState.Running: {
+                    float dt = m_clock_delta_time;
+                    //TODO: Study applying dt = reverse ? -dt : dt
+                    //Elapsed can be negative and when smaller than -duration step decreases
                     //Update Elapsed
-                    m_elapsed += m_clock_delta_time;
-                    //Fix has duration clamp to its value
-                    if(duration>0f) m_elapsed = Mathf.Min(duration,Mathf.Max(0f,m_elapsed));
+                    m_elapsed += dt;                    
+                    //Fix elapsed against duration and 0
+                    if(m_elapsed < 0f) m_elapsed = 0f;
+                    if(duration  > 0f) m_elapsed = Mathf.Min(duration,m_elapsed);
                 }
                 break;
             }            
@@ -500,8 +510,8 @@ namespace UnityExt.Core {
             step++;                            
             //If 'steps' reached 'count' and 'count>0' complete the timer.
             if(count>0)if(step>=count) { step=count-1; return true; }
-            //Reset elapsed
-            m_elapsed=0f;
+            //Reset elapsed slightly behind in time
+            m_elapsed=-0.1f;
             //Keep going
             return false;
         }
@@ -516,7 +526,7 @@ namespace UnityExt.Core {
         /// <returns>Execution progress in the range [0,1]</returns>
         override public float GetProgress() {
             switch(state) {
-                case State.Running: return progress;
+                case ActivityState.Running: return progress;
             }
             return base.GetProgress();
         }

@@ -144,68 +144,67 @@ namespace UnityExt.Core {
 
         /// <summary>
         /// Handler called to expand the interpolator search and convertion.
+        /// Considering not all data types are supported, expand the functionality by providing your own interpolator type associated with a given type.
         /// </summary>
-        static public Func<string,Type> GetInterpolatorCustom;
+        static public Func<Type,Type> GetInterpolatorCustom;
 
         /// <summary>
         /// Searches and return an interpolator instance based on the value type.
         /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <returns></returns>
-        static public Interpolator Get<T>() {
-            //Init the lookup to speedup the interpolator search.
-            if(m_type_interpolator_lut==null) m_type_interpolator_lut = new Dictionary<Type, Type>();
+        /// <param name="p_value_type">Data type to be interpolated.</param>
+        /// <returns>Reference to the interpolator or null.</returns>
+        static public Interpolator Get(Type p_value_type) {            
             //Target value type
-            Type vt      = typeof(T);
+            Type vt = p_value_type;
             //Check if already found
-            bool has_key = m_type_interpolator_lut.ContainsKey(vt);
+            bool has_key = vt==null ? false : m_type_interpolator_lut_default.ContainsKey(vt);
             //Set the interpolator type if found
-            Type it = has_key ? m_type_interpolator_lut[vt] : null;
-            //Search otherwise
-            if(it==null) {
-                //Fetch type name
-                string tn = vt.Name;
-                //Check if exists in the default table
-                it = m_type_interpolator_lut_default.ContainsKey(tn) ? m_type_interpolator_lut_default[tn] : null;
-                //Search custom interpolators so they can override default ones
-                Type itc = GetInterpolatorCustom==null ? null : GetInterpolatorCustom(tn);
-                it = itc==null ? it : itc;
-            }
+            Type it  = has_key ? m_type_interpolator_lut_default[vt] : null;
+            //Search custom interpolators so they can override default ones
+            Type itc = GetInterpolatorCustom==null ? null : GetInterpolatorCustom(p_value_type);
+            //Override default interpolator if type was found
+            it = itc==null ? it : itc;            
             //If invalid type return default interpolator
             if(it==null) {
-                Debug.LogWarning($"Interpolator> Failed to find interpolator for type [{typeof(T).FullName}]");
-                return new Interpolator<T>();
+                Debug.LogWarning($"Interpolator> Failed to find interpolator for type [{(vt==null ? "<null>" : vt.FullName)}]");
+                return new Interpolator();
             }
             return (Interpolator)it.GetConstructor(m_interpolator_empty_ctor).Invoke(m_interpolator_empty_args);
         }
         static Type[]   m_interpolator_empty_ctor = new Type[0];
         static object[] m_interpolator_empty_args = new object[0];
-        static Dictionary<Type,Type>   m_type_interpolator_lut;
+        
+        /// <summary>
+        /// Searches for the available interpolator for a given type.
+        /// </summary>
+        /// <typeparam name="T">Data Type to be interpolated.</typeparam>        
+        /// <returns>Reference to the interpolator or null.</returns>
+        static public Interpolator<T> Get<T>() { return Get(typeof(T)) as Interpolator<T>; }
 
-        #region Dictionary<string,Type> m_type_interpolator_lut_default
-        static Dictionary<string,Type> m_type_interpolator_lut_default = new Dictionary<string,Type>() { 
-            {"Byte",       typeof(ByteInterpolator)        },
-            {"SByte",      typeof(SByteInterpolator)       },            
-            {"UInt16",     typeof(UShortInterpolator)      },
-            {"Int16",      typeof(ShortInterpolator)       },
-            {"UInt32",     typeof(UIntInterpolator)        },
-            {"Int32",      typeof(IntInterpolator)         },
-            {"UInt64",     typeof(ULongInterpolator)       },
-            {"Int64",      typeof(LongInterpolator)        },
-            {"Single",     typeof(FloatInterpolator)       },
-            {"Double",     typeof(DoubleInterpolator)      },
-            {"Vector2",    typeof(Vector2Interpolator)     },
-            {"Vector2Int", typeof(Vector2IntInterpolator)  },
-            {"Vector3",    typeof(Vector3Interpolator)     },
-            {"Vector3Int", typeof(Vector3IntInterpolator)  },
-            {"Vector4",    typeof(Vector4Interpolator)     },
-            {"Color",      typeof(ColorInterpolator)       },
-            {"Color32",    typeof(Color32Interpolator)     },
-            {"Rect",       typeof(RectInterpolator)        },
-            {"RangeInt",   typeof(RangeIntInterpolator)    },
-            {"Ray",        typeof(RayInterpolator)         },
-            {"Ray2D",      typeof(Ray2DInterpolator)       },
-            {"Quaternion", typeof(QuaternionInterpolator)  }            
+        #region Dictionary<Type,Type> m_type_interpolator_lut_default
+        static Dictionary<Type,Type> m_type_interpolator_lut_default = new Dictionary<Type,Type>() { 
+            {typeof(byte      ), typeof(ByteInterpolator        )},
+            {typeof(sbyte     ), typeof(SByteInterpolator       )},           
+            {typeof(ushort    ), typeof(UShortInterpolator      )},
+            {typeof(short     ), typeof(ShortInterpolator       )},
+            {typeof(uint      ), typeof(UIntInterpolator        )},
+            {typeof(int       ), typeof(IntInterpolator         )},
+            {typeof(ulong     ), typeof(ULongInterpolator       )},
+            {typeof(long      ), typeof(LongInterpolator        )},
+            {typeof(float     ), typeof(FloatInterpolator       )},
+            {typeof(double    ), typeof(DoubleInterpolator      )},
+            {typeof(Vector2   ), typeof(Vector2Interpolator     )},
+            {typeof(Vector2Int), typeof(Vector2IntInterpolator  )},
+            {typeof(Vector3   ), typeof(Vector3Interpolator     )},
+            {typeof(Vector3Int), typeof(Vector3IntInterpolator  )},
+            {typeof(Vector4   ), typeof(Vector4Interpolator     )},
+            {typeof(Color     ), typeof(ColorInterpolator       )},
+            {typeof(Color32   ), typeof(Color32Interpolator     )},
+            {typeof(Rect      ), typeof(RectInterpolator        )},
+            {typeof(RangeInt  ), typeof(RangeIntInterpolator    )},
+            {typeof(Ray       ), typeof(RayInterpolator         )},
+            {typeof(Ray2D     ), typeof(Ray2DInterpolator       )},
+            {typeof(Quaternion), typeof(QuaternionInterpolator  )}            
         };
         #endregion
 
@@ -284,7 +283,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Creates a new interpolator.
         /// </summary>
-        public Interpolator() { Create(null,"",null,null); }
+        public Interpolator() { Create(null,"",null); }
 
         /// <summary>
         /// Creates the interpolator internal data.
@@ -293,9 +292,11 @@ namespace UnityExt.Core {
         /// <param name="p_property"></param>
         /// <param name="p_easing_function"></param>
         /// <param name="p_easing_curve"></param>
-        internal void Create(object p_target,string p_property,Func<float,float> p_easing_function,AnimationCurve p_easing_curve) {            
-            easingFunction = p_easing_function;
-            easingCurve    = p_easing_curve;
+        internal void Create(object p_target,string p_property,object p_easing) {            
+            easingFunction = null;
+            easingCurve    = null;
+            if(p_easing is Func<float,float>) easingFunction = (Func<float,float>)p_easing;
+            if(p_easing is AnimationCurve)    easingCurve    = (AnimationCurve)   p_easing;                
             AssertTarget(p_target,p_property);
         }
 
@@ -316,7 +317,9 @@ namespace UnityExt.Core {
             m_material_property_id       = -1;
             //Clear valid
             isValid = false;
+            //Skip null target
             if(m_target==null)                   { return; }
+            //Skip empty property
             if(string.IsNullOrEmpty(m_property)) { return; }            
             //Set the flag if its an unity object to increase assertion.
             isUnityObject = target is UnityEngine.Object;
@@ -542,7 +545,7 @@ namespace UnityExt.Core {
         /// <param name="p_target">Target object.</param>
         /// <param name="p_property">Property to interpolate.</param>
         /// <param name="p_easing">Easing Function.</param>
-        public void Set(object p_target,string p_property,Func<float,float> p_easing) { easingFunction = p_easing; AssertTarget(p_target,p_property); }
+        public void Set(object p_target,string p_property,Func<float,float> p_easing) { Create(p_target,p_property,p_easing); }
 
         /// <summary>
         /// Set this interpolator target and properties.
@@ -550,7 +553,7 @@ namespace UnityExt.Core {
         /// <param name="p_target">Target object.</param>
         /// <param name="p_property">Property to interpolate.</param>
         /// <param name="p_easing">Easing Curve.</param>
-        public void Set(object p_target,string p_property,AnimationCurve p_easing)    { easingCurve = p_easing;    AssertTarget(p_target,p_property); }
+        public void Set(object p_target,string p_property,AnimationCurve p_easing) { Create(p_target,p_property,p_easing); }
 
         /// <summary>
         /// Set this interpolator target and properties.
@@ -558,7 +561,7 @@ namespace UnityExt.Core {
         /// <param name="p_target">Target object.</param>
         /// <param name="p_property">Property to interpolate.</param>
         /// <param name="p_easing">Easing Curve.</param>
-        public void Set(object p_target,string p_property) { easingCurve    = null; easingFunction = null; AssertTarget(p_target,p_property); }
+        public void Set(object p_target,string p_property) { Create(p_target,p_property,null); }
 
         #endregion
 
@@ -587,6 +590,14 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_ratio"></param>
         virtual protected void OnLerp(float p_ratio) { }
+
+        /// <summary>
+        /// Helper for the typed version.
+        /// </summary>
+        /// <param name="p_from"></param>
+        /// <param name="p_to"></param>
+        /// <param name="p_has_from"></param>
+        virtual internal void Set(object p_from,object p_to,bool p_has_from) { }
 
         #endregion
 
@@ -617,6 +628,8 @@ namespace UnityExt.Core {
         /// </summary>
         internal bool m_capture_from;
         internal bool m_first_iteration;
+        internal Interpolator<U> Cast<U>()    { return this as Interpolator<U>; }
+        internal bool            CanCast<U>() { return this is Interpolator<U>; }
 
         #region Set
 
@@ -627,13 +640,7 @@ namespace UnityExt.Core {
         /// <param name="p_property">Property to change.</param>
         /// <param name="p_from">Initial Value.</param>
         /// <param name="p_to">End Value</param>
-        public void Set(object p_target,string p_property,T p_from,T p_to) {            
-            Set(p_target,p_property);
-            from = p_from;
-            to   = p_to;
-            m_first_iteration= true;
-            m_capture_from   = false;
-        }
+        public void Set(object p_target,string p_property,T p_from,T p_to) { Create(p_target,p_property,p_from,p_to,true,null); }
 
         /// <summary>
         /// Set this interpolator target, property and value range. 'From' isn't specified so it will be sampled in the first iteration.
@@ -641,11 +648,7 @@ namespace UnityExt.Core {
         /// <param name="p_target">Target to interpolate.</param>
         /// <param name="p_property">Property to change.</param>        
         /// <param name="p_to">End Value</param>
-        public void Set(object p_target,string p_property,T p_to) {            
-            Set(p_target,p_property,p_to,p_to);
-            m_first_iteration= true;
-            m_capture_from   = true;
-        }
+        public void Set(object p_target,string p_property,T p_to) { Create(p_target,p_property,p_to,p_to,false,null); }
 
         /// <summary>
         /// Set this interpolator target, property and value range.
@@ -655,13 +658,7 @@ namespace UnityExt.Core {
         /// <param name="p_from">Initial Value.</param>
         /// <param name="p_to">End Value</param>
         /// <param name="p_easing">Easing Function.</param>
-        public void Set(object p_target,string p_property,T p_from,T p_to,Func<float,float> p_easing) {
-            Set(p_target,p_property,p_easing);
-            from = p_from;
-            to   = p_to;
-            m_first_iteration= true;
-            m_capture_from   = false;
-        }
+        public void Set(object p_target,string p_property,T p_from,T p_to,Func<float,float> p_easing) { Create(p_target,p_property,p_from,p_to,true,p_easing); }
 
         /// <summary>
         /// Set this interpolator target, property and value range.
@@ -671,40 +668,45 @@ namespace UnityExt.Core {
         /// <param name="p_from">Initial Value.</param>
         /// <param name="p_to">End Value</param>
         /// <param name="p_easing">Easing Curve.</param>
-        public void Set(object p_target,string p_property,T p_from,T p_to,AnimationCurve p_easing) {
-            Set(p_target,p_property,p_easing);
-            from = p_from;
-            to   = p_to;
-            m_first_iteration= true;
-            m_capture_from   = false;
-        }
+        public void Set(object p_target,string p_property,T p_from,T p_to,AnimationCurve p_easing) { Create(p_target,p_property,p_from,p_to,true,p_easing); }
 
         /// <summary>
         /// Set this interpolator target, property and value range. 'From' isn't specified so it will be sampled in the first iteration.
         /// </summary>
         /// <param name="p_target">Target to interpolate.</param>
         /// <param name="p_property">Property to change.</param>
-        /// <param name="p_from">Initial Value.</param>        
+        /// <param name="p_to">Target Value.</param>        
         /// <param name="p_easing">Easing Function.</param>
-        public void Set(object p_target,string p_property,T p_from,Func<float,float> p_easing) {
-            Set(p_target,p_property,p_easing);
-            from = p_from;            
-            m_first_iteration= true;
-            m_capture_from   = true;
-        }
+        public void Set(object p_target,string p_property,T p_to,Func<float,float> p_easing) { Create(p_target,p_property,p_to,p_to,false,p_easing); }
 
         /// <summary>
         /// Set this interpolator target, property and value range. 'From' isn't specified so it will be sampled in the first iteration.
         /// </summary>
         /// <param name="p_target">Target to interpolate.</param>
         /// <param name="p_property">Property to change.</param>
-        /// <param name="p_from">Initial Value.</param>        
+        /// <param name="p_to">Target Value.</param>        
         /// <param name="p_easing">Easing Curve.</param>
-        public void Set(object p_target,string p_property,T p_from,AnimationCurve p_easing) {
-            Set(p_target,p_property,p_easing);
-            from = p_from;            
-            m_first_iteration= true;
-            m_capture_from   = true;
+        public void Set(object p_target,string p_property,T p_to,AnimationCurve p_easing) { Create(p_target,p_property,p_to,p_to,false,p_easing); }
+
+        /// <summary>
+        /// Helper method.
+        /// </summary>        
+        internal void Create(object p_target,string p_property,T p_from,T p_to,bool p_has_from,object p_easing) {
+            Create(p_target,p_property,p_easing);                        
+            Set(p_from,p_to,p_has_from);
+        }
+
+        /// <summary>
+        /// Helper
+        /// </summary>
+        /// <param name="p_from"></param>
+        /// <param name="p_to"></param>
+        /// <param name="p_has_from"></param>
+        override internal void Set(object p_from,object p_to,bool p_has_from) {
+            to = (T)p_to;
+            if(p_has_from) from = (T)p_from;            
+            m_first_iteration = true;
+            m_capture_from    = p_has_from;
         }
 
         #endregion
@@ -747,7 +749,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'sbyte'
     /// </summary>
-    public class SByteInterpolator   : Interpolator<sbyte>   { 
+    internal class SByteInterpolator   : Interpolator<sbyte>   { 
         protected override void  SetFromField()          { from = GetSByte(); }
         protected override void  SetProperty(sbyte p_value) { SetSByte(p_value); }
         protected override sbyte LerpValue(float p_ratio) { float dv  = (float)(to-from); sbyte   off = (sbyte)(dv*p_ratio);  return (sbyte)(from + off); } 
@@ -755,7 +757,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'byte'
     /// </summary>
-    public class ByteInterpolator    : Interpolator<byte>    { 
+    internal class ByteInterpolator    : Interpolator<byte>    { 
         protected override void SetFromField()          { from = GetByte(); }
         protected override void SetProperty(byte p_value) { SetByte(p_value); }
         protected override byte LerpValue(float p_ratio) { float dv  = (float)(to-from); byte    off = (byte)(dv*p_ratio);   return (byte)(from + off); } 
@@ -763,7 +765,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'ushort'
     /// </summary>
-    public class UShortInterpolator  : Interpolator<ushort>  { 
+    internal class UShortInterpolator  : Interpolator<ushort>  { 
         protected override void SetFromField()           { from = GetUShort(); }
         protected override void SetProperty(ushort p_value) { SetUShort(p_value); }
         protected override ushort LerpValue(float p_ratio) { float dv  = (float)(to-from); ushort  off = (ushort)(dv*p_ratio); return (ushort)(from + off); } 
@@ -771,7 +773,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'short'
     /// </summary>
-    public class ShortInterpolator   : Interpolator<short>   { 
+    internal class ShortInterpolator   : Interpolator<short>   { 
         protected override void  SetFromField()          { from = GetShort(); }
         protected override void  SetProperty(short p_value) { SetShort(p_value); }
         protected override short LerpValue(float p_ratio) { float dv  = (float)(to-from); short   off = (short)(dv*p_ratio);  return (short)(from + off); } 
@@ -779,7 +781,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'uint'
     /// </summary>
-    public class UIntInterpolator    : Interpolator<uint>    { 
+    internal class UIntInterpolator    : Interpolator<uint>    { 
         protected override void SetFromField()           { from = GetUInt(); }
         protected override void SetProperty(uint p_value)   { SetUInt(p_value); }
         protected override uint LerpValue(float p_ratio) { float dv  = (float)(to-from);  uint   off = (uint)(dv*p_ratio);   return from + off; } 
@@ -787,7 +789,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'int'
     /// </summary>
-    public class IntInterpolator     : Interpolator<int>     { 
+    internal class IntInterpolator     : Interpolator<int>     { 
         protected override void SetFromField()          { from = GetInt(); }
         protected override void SetProperty(int p_value)   { SetInt(p_value); }
         protected override int  LerpValue(float p_ratio) { float dv  = (float)(to-from);  int    off = (int)(dv*p_ratio);    return from + off; } 
@@ -795,7 +797,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'ulong'
     /// </summary>
-    public class ULongInterpolator   : Interpolator<ulong>   { 
+    internal class ULongInterpolator   : Interpolator<ulong>   { 
         protected override void SetFromField()          { from = GetULong(); }
         protected override void SetProperty(ulong p_value) { SetULong(p_value); }
         protected override ulong  LerpValue(float p_ratio) { double dv = (double)(to-from); ulong  off = (ulong)(dv*p_ratio);  return from + off; } 
@@ -803,7 +805,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'ulong'
     /// </summary>
-    public class LongInterpolator    : Interpolator<long>    { 
+    internal class LongInterpolator    : Interpolator<long>    { 
         protected override void SetFromField()         { from = GetLong(); }
         protected override void SetProperty(long p_value) { SetLong(p_value); }
         protected override long LerpValue(float p_ratio) { double dv  = (double)(to-from); long  off = (long)(dv*p_ratio);   return from + off; } 
@@ -811,7 +813,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'float'
     /// </summary>
-    public class FloatInterpolator   : Interpolator<float>   { 
+    internal class FloatInterpolator   : Interpolator<float>   { 
         protected override void  SetFromField()          { from = GetFloat(); }
         protected override void  SetProperty(float p_value) { SetFloat(p_value); }
         protected override float LerpValue(float p_ratio) { float dv  = (float)(to-from);  float  off = (float)(dv*p_ratio);  return from + off; } 
@@ -819,7 +821,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'double'
     /// </summary>
-    public class DoubleInterpolator  : Interpolator<double>  { 
+    internal class DoubleInterpolator  : Interpolator<double>  { 
         protected override void   SetFromField()           { from = GetDouble(); }
         protected override void   SetProperty(double p_value) { SetDouble(p_value); }
         protected override double LerpValue(float p_ratio)    { float dv  = (float)(to-from);  double off = (double)(dv*p_ratio); return from + off; } 
@@ -949,7 +951,7 @@ namespace UnityExt.Core {
 
     #region class UnityVectorInterpolator<T>
 
-    public class UnityVectorInterpolator<T> : Interpolator<T> {
+    internal class UnityVectorInterpolator<T> : Interpolator<T> {
         
         /// <summary>
         /// Component selection mask.
@@ -976,7 +978,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector2'
     /// </summary>
-    public class Vector2Interpolator    : UnityVectorInterpolator<Vector2>     { 
+    internal class Vector2Interpolator    : UnityVectorInterpolator<Vector2>     { 
         protected override void  SetFromField()            { from = GetVector2(); }
         protected override void  SetProperty(Vector2 p_value) { SetVector2(p_value); }
         protected override Vector2    LerpValue(float p_ratio) { Vector2   dv  = (Vector2)(to-from);      Vector2    off = ApplyMask(dv*p_ratio); return from + off; } 
@@ -984,7 +986,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector2Int'
     /// </summary>
-    public class Vector2IntInterpolator : UnityVectorInterpolator<Vector2Int>  { 
+    internal class Vector2IntInterpolator : UnityVectorInterpolator<Vector2Int>  { 
         protected override void  SetFromField()            { from = GetVector2Int(); }
         protected override void  SetProperty(Vector2Int p_value) { SetVector2Int(p_value); }
         protected override Vector2Int LerpValue(float p_ratio) { Vector2   dv  = (Vector2)(to-from);      Vector2    off = ApplyMask(dv*p_ratio); return from + new Vector2Int((int)off.x,(int)off.y); } 
@@ -992,7 +994,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector3'
     /// </summary>
-    public class Vector3Interpolator    : UnityVectorInterpolator<Vector3>     { 
+    internal class Vector3Interpolator    : UnityVectorInterpolator<Vector3>     { 
         protected override void  SetFromField()            { from = GetVector3(); }
         protected override void  SetProperty(Vector3 p_value) { SetVector3(p_value); }
         protected override Vector3    LerpValue(float p_ratio) { Vector3    dv  = (Vector3)(to-from);     Vector3    off = ApplyMask(dv*p_ratio);  return from + off; } 
@@ -1000,7 +1002,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector3Int'
     /// </summary>
-    public class Vector3IntInterpolator : UnityVectorInterpolator<Vector3Int>  { 
+    internal class Vector3IntInterpolator : UnityVectorInterpolator<Vector3Int>  { 
         protected override void  SetFromField()               { from = GetVector3Int(); }
         protected override void  SetProperty(Vector3Int p_value) { SetVector3Int(p_value); }
         protected override Vector3Int LerpValue(float p_ratio) { Vector3   dv  = (Vector3)(to-from);      Vector3    off = ApplyMask(dv*p_ratio); return from + new Vector3Int((int)off.x,(int)off.y,(int)off.z); } 
@@ -1008,7 +1010,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Vector4'
     /// </summary>
-    public class Vector4Interpolator    : UnityVectorInterpolator<Vector4>     { 
+    internal class Vector4Interpolator    : UnityVectorInterpolator<Vector4>     { 
         protected override void  SetFromField()             { from = GetVector4(); }
         protected override void  SetProperty(Vector4 p_value)  { SetVector4(p_value); }
         protected override Vector4    LerpValue(float p_ratio) { Vector4    dv  = (Vector4)(to-from);     Vector4    off = ApplyMask(dv*p_ratio); return from + off; } 
@@ -1016,7 +1018,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Color'
     /// </summary>
-    public class ColorInterpolator    : UnityVectorInterpolator<Color>         { 
+    internal class ColorInterpolator    : UnityVectorInterpolator<Color>         { 
         protected override void  SetFromField()           { from = GetColor(); }
         protected override void  SetProperty(Color p_value)  { SetColor(p_value); }
         protected override Color      LerpValue(float p_ratio) { 
@@ -1029,7 +1031,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Quaternion'
     /// </summary>
-    public class QuaternionInterpolator : UnityVectorInterpolator<Quaternion>  { 
+    internal class QuaternionInterpolator : UnityVectorInterpolator<Quaternion>  { 
         protected override void  SetFromField()               { from = GetQuaternion(); }
         protected override void  SetProperty(Quaternion p_value) { SetQuaternion(p_value); }
         protected override Quaternion LerpValue(float p_ratio) {             
@@ -1045,7 +1047,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Rect'
     /// </summary>
-    public class RectInterpolator : UnityVectorInterpolator<Rect> {
+    internal class RectInterpolator : UnityVectorInterpolator<Rect> {
         protected override void  SetFromField()          { from = GetRect(); }
         protected override void  SetProperty(Rect p_value)  { SetRect(p_value); }
         protected override Rect LerpValue(float p_ratio) {             
@@ -1058,7 +1060,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Color32'
     /// </summary>
-    public class Color32Interpolator  : UnityVectorInterpolator<Color32> { 
+    internal class Color32Interpolator  : UnityVectorInterpolator<Color32> { 
         protected override void  SetFromField()           { from = GetColor32(); }
         protected override void  SetProperty(Color32 p_value)  { SetColor32(p_value); }
         protected override Color32 LerpValue(float p_ratio) {             
@@ -1074,7 +1076,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'RangeInt'
     /// </summary>
-    public class RangeIntInterpolator  : UnityVectorInterpolator<RangeInt> { 
+    internal class RangeIntInterpolator  : UnityVectorInterpolator<RangeInt> { 
         protected override void  SetFromField()              { from = GetRangeInt(); }
         protected override void  SetProperty(RangeInt p_value)  { SetRangeInt(p_value); }
         protected override RangeInt LerpValue(float p_ratio) {             
@@ -1088,7 +1090,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Ray'
     /// </summary>
-    public class RayInterpolator : UnityVectorInterpolator<Ray> {
+    internal class RayInterpolator : UnityVectorInterpolator<Ray> {
         protected override void  SetFromField()         { from = GetRay(); }
         protected override void  SetProperty(Ray p_value)  { SetRay(p_value); }
         protected override Ray LerpValue(float p_ratio) {             
@@ -1101,7 +1103,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class Extension to interpolate 'Ray2D'
     /// </summary>
-    public class Ray2DInterpolator : UnityVectorInterpolator<Ray2D> {
+    internal class Ray2DInterpolator : UnityVectorInterpolator<Ray2D> {
         protected override void  SetFromField()         { from = GetRay2D(); }
         protected override void  SetProperty(Ray2D p_value)  { SetRay2D(p_value); }
         protected override Ray2D LerpValue(float p_ratio) {             

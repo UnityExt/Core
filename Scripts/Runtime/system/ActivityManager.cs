@@ -33,7 +33,7 @@ namespace UnityExt.Core {
                 /// <summary>
                 /// Activity.Context of execution.
                 /// </summary>
-                public Activity.Context context;
+                public ActivityContext context;
 
                 /// <summary>
                 /// Timer for async loops.
@@ -41,18 +41,13 @@ namespace UnityExt.Core {
                 public System.Diagnostics.Stopwatch timer;
 
                 /// <summary>
-                /// Internals.
-                /// </summary>
-                private string m_id_query;
-
-                /// <summary>
                 /// CTOR.
                 /// </summary>
-                public List(Activity.Context p_context) {
+                public List(ActivityContext p_context) {
                     la = new System.Collections.Generic.List<Activity>(15000);
                     ia = 0;
                     context = p_context;
-                    timer   = context == Activity.Context.Async  ? new System.Diagnostics.Stopwatch() : null;                    
+                    timer   = context == ActivityContext.Async  ? new System.Diagnostics.Stopwatch() : null;                    
                 }
 
                 /// <summary>
@@ -72,15 +67,15 @@ namespace UnityExt.Core {
                     //Skip invalid
                     if(la==null) return;
                     switch(context) {
-                        case Activity.Context.Thread: {
+                        case ActivityContext.Thread: {
                             lock(this) { 
                                 //Threads needs to null the element and handle inside thread context
-                                for(int i=0;i<la.Count;i++) if(la[i]!=null) { la[i].OnStopInternal(); la[i]=null; }
+                                for(int i=0;i<la.Count;i++) if(la[i]!=null) { la[i].OnManagerRemoveInternal(); la[i]=null; }
                             }
                         }
                         break;
                         default:  {
-                            for(int i=0;i<la.Count;i++) if(la[i]!=null) la[i].OnStopInternal();
+                            for(int i=0;i<la.Count;i++) if(la[i]!=null) la[i].OnManagerRemoveInternal();
                             la.Clear();                        
                         }
                         break;
@@ -116,12 +111,10 @@ namespace UnityExt.Core {
                 /// </summary>
                 /// <param name="p_id"></param>
                 /// <returns></returns>
-                public Activity Find(string p_id) {
-                    Activity res = null;
-                    if(la==null) return res;
-                    m_id_query = p_id;
-                    res = la.Find(FindById);
-                    m_id_query = "";
+                public T Find<T>(string p_id) where T : Activity {
+                    T res = null;
+                    if(la==null) return res;                    
+                    for(int i=0;i<la.Count;i++) if(QueryMatch<T>(la[i],p_id)) { res = (T)la[i]; break; }                    
                     return res;
                 }
 
@@ -130,12 +123,12 @@ namespace UnityExt.Core {
                 /// </summary>
                 /// <param name="p_id"></param>
                 /// <returns></returns>
-                public SCG.List<Activity> FindAll(string p_id) {
-                    SCG.List<Activity> res = null;
-                    if(la==null) return res = new SCG.List<Activity>();
-                    m_id_query = p_id;
-                    res = la.FindAll(FindById);
-                    m_id_query = "";
+                public SCG.List<T> FindAll<T>(string p_id) where T : Activity {
+                    SCG.List<T> res = new SCG.List<T>();
+                    if(la==null) return res;                    
+                    for(int i=0;i<la.Count;i++) {                        
+                        if(QueryMatch<T>(la[i],p_id)) res.Add((T)la[i]);
+                    }
                     return res;
                 }
 
@@ -144,8 +137,13 @@ namespace UnityExt.Core {
                 /// </summary>
                 /// <param name="it"></param>
                 /// <returns></returns>
-                private bool FindById(Activity it) { return it==null ? false : (it.id == m_id_query); }
-
+                internal bool QueryMatch<T>(Activity it,string p_id) where T : Activity { 
+                    if(it==null) return false;
+                    if(p_id!="") if(it.id!=p_id) return false;
+                    if(!(it is T)) return false;                    
+                    return true;
+                }
+                
                 #region Execute
 
                 /// <summary>
@@ -165,7 +163,7 @@ namespace UnityExt.Core {
                     //Skip if empty
                     if(la.Count<=0) return;
                     //Shortcut bool
-                    bool is_async = context == Activity.Context.Async;
+                    bool is_async = context == ActivityContext.Async;
                     //If async prepare timer
                     if(is_async)  timer.Restart();
                     //If not async iterator is back to 0
@@ -210,7 +208,7 @@ namespace UnityExt.Core {
                 /// <summary>
                 /// CTOR
                 /// </summary>
-                public List(Activity.Context p_context) : base(p_context) {
+                public List(ActivityContext p_context) : base(p_context) {
                     li = new SCG.List<T>(15000);
                     ii = 0;                    
                 }
@@ -254,7 +252,7 @@ namespace UnityExt.Core {
                     //Skip invalid
                     if(li==null) return;
                     switch(context) {
-                        case Activity.Context.Thread: {
+                        case ActivityContext.Thread: {
                             lock(this) { 
                                 //Threads needs to null the element and handle inside thread context
                                 for(int i=0;i<li.Count;i++) li[i]=default(T);
@@ -286,7 +284,7 @@ namespace UnityExt.Core {
                     //Skip if empty
                     if(li.Count<=0) return;
                     //Shortcut bool
-                    bool is_async = context == Activity.Context.Async;
+                    bool is_async = context == ActivityContext.Async;
                     //Same of interfaces
                     if(is_async)  timer.Restart();
                     if(!is_async) ii=0;
@@ -297,11 +295,11 @@ namespace UnityExt.Core {
                         if(li_it==null) continue;                        
                         //Cast the interface based on the context.
                         switch(context) {
-                            case Activity.Context.Update:      { IUpdateable       it = (IUpdateable)      li_it; if(it!=null)it.OnUpdate();       } break;
-                            case Activity.Context.LateUpdate:  { ILateUpdateable   it = (ILateUpdateable)  li_it; if(it!=null)it.OnLateUpdate();   } break;
-                            case Activity.Context.Async:       { IAsyncUpdateable  it = (IAsyncUpdateable) li_it; if(it!=null)it.OnAsyncUpdate();  } break;
-                            case Activity.Context.FixedUpdate: { IFixedUpdateable  it = (IFixedUpdateable) li_it; if(it!=null)it.OnFixedUpdate();  } break;
-                            case Activity.Context.Thread:      { IThreadUpdateable it = (IThreadUpdateable)li_it; if(it!=null)it.OnThreadUpdate(); } break;
+                            case ActivityContext.Update:      { IUpdateable       it = (IUpdateable)      li_it; if(it!=null)it.OnUpdate();       } break;
+                            case ActivityContext.LateUpdate:  { ILateUpdateable   it = (ILateUpdateable)  li_it; if(it!=null)it.OnLateUpdate();   } break;
+                            case ActivityContext.Async:       { IAsyncUpdateable  it = (IAsyncUpdateable) li_it; if(it!=null)it.OnAsyncUpdate();  } break;
+                            case ActivityContext.FixedUpdate: { IFixedUpdateable  it = (IFixedUpdateable) li_it; if(it!=null)it.OnFixedUpdate();  } break;
+                            case ActivityContext.Thread:      { IThreadUpdateable it = (IThreadUpdateable)li_it; if(it!=null)it.OnThreadUpdate(); } break;
                         }
                         //Same as above
                         int c = li.Count;
@@ -342,17 +340,17 @@ namespace UnityExt.Core {
             /// CTOR
             /// </summary>
             public void Awake() {
-                if(lu==null)  lu  = new List<IUpdateable>(Activity.Context.Update);
-                if(llu==null) llu = new List<ILateUpdateable>(Activity.Context.LateUpdate);
-                if(lfu==null) lfu = new List<IFixedUpdateable>(Activity.Context.FixedUpdate);
-                if(lau==null) lau = new List<IAsyncUpdateable>(Activity.Context.Async);                
+                if(lu==null)  lu  = new List<IUpdateable>(ActivityContext.Update);
+                if(llu==null) llu = new List<ILateUpdateable>(ActivityContext.LateUpdate);
+                if(lfu==null) lfu = new List<IFixedUpdateable>(ActivityContext.FixedUpdate);
+                if(lau==null) lau = new List<IAsyncUpdateable>(ActivityContext.Async);                
                 if(ltq_a==null)      ltq_a    = new SCG.List<Activity>();                
                 if(ltq_i==null)      ltq_i    = new SCG.List<IThreadUpdateable>();                
                 if(ltq_jobs == null) ltq_jobs = new SCG.List<Action>();                
                 //Init threads based on max allowed threads.
                 int max_thread = Activity.maxThreadCount;
                 if(lt==null)   lt   = new List<IThreadUpdateable>[max_thread];
-                for(int i=0;i<lt.Length;i++) lt[i] = new List<IThreadUpdateable>(Activity.Context.Thread);
+                for(int i=0;i<lt.Length;i++) lt[i] = new List<IThreadUpdateable>(ActivityContext.Thread);
                 if(thdl==null) thdl = new Thread[max_thread];
                 //Index of the thread to add nodes next
                 thread_queue_target_a = 0;
@@ -408,14 +406,14 @@ namespace UnityExt.Core {
             /// </summary>
             /// <param name="p_context"></param>
             /// <returns></returns>
-            internal List GetActivityList(Activity.Context p_context) {
+            internal List GetActivityList(ActivityContext p_context) {
                 switch(p_context) {
-                    case Activity.Context.Job:
-                    case Activity.Context.JobAsync:
-                    case Activity.Context.Update:      return lu;
-                    case Activity.Context.LateUpdate:  return llu;
-                    case Activity.Context.FixedUpdate: return lfu;
-                    case Activity.Context.Async:       return lau;                    
+                    case ActivityContext.Job:
+                    case ActivityContext.JobAsync:
+                    case ActivityContext.Update:      return lu;
+                    case ActivityContext.LateUpdate:  return llu;
+                    case ActivityContext.FixedUpdate: return lfu;
+                    case ActivityContext.Async:       return lau;                    
                 }
                 return null;
             }
@@ -429,18 +427,18 @@ namespace UnityExt.Core {
                 //Skip invalid
                 if(a==null)               return;
                 //Only accept correctly stopped tasks
-                if(a.state==Activity.State.Running) { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already running.");*/ return; }
-                if(a.state==Activity.State.Queued)  { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already queued.");*/  return; }
-                a.state = Activity.State.Queued;
+                if(a.state==ActivityState.Running) { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already running.");*/ return; }
+                if(a.state==ActivityState.Queued)  { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already queued.");*/  return; }
+                a.state = ActivityState.Queued;
                 switch(a.context) {
-                    case Activity.Context.Job:
-                    case Activity.Context.JobAsync:
-                    case Activity.Context.Update:      if(!lu.la.Contains(a))  lu.la.Add(a);  break;
-                    case Activity.Context.LateUpdate:  if(!llu.la.Contains(a)) llu.la.Add(a); break;
-                    case Activity.Context.FixedUpdate: if(!lfu.la.Contains(a)) lfu.la.Add(a); break;
-                    case Activity.Context.Async:       if(!lau.la.Contains(a)) lau.la.Add(a); break;
+                    case ActivityContext.Job:
+                    case ActivityContext.JobAsync:
+                    case ActivityContext.Update:      if(!lu.la.Contains(a))  lu.la.Add(a);  break;
+                    case ActivityContext.LateUpdate:  if(!llu.la.Contains(a)) llu.la.Add(a); break;
+                    case ActivityContext.FixedUpdate: if(!lfu.la.Contains(a)) lfu.la.Add(a); break;
+                    case ActivityContext.Async:       if(!lau.la.Contains(a)) lau.la.Add(a); break;
                     //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way
-                    case Activity.Context.Thread:    {       
+                    case ActivityContext.Thread:    {       
                         //Safely add to queue
                         SafeAdd(ltq_a,a);
                         //Assert for thread creation
@@ -449,7 +447,7 @@ namespace UnityExt.Core {
                     }
                 }
                 //Call added handler.
-                a.OnAddedInternal();
+                a.OnManagerAddInternal();
             }
 
             /// <summary>
@@ -464,14 +462,14 @@ namespace UnityExt.Core {
                 //if(a.state==Activity.State.Complete) { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already completed."); return; }
                 //if(a.state==Activity.State.Stopped)  { Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already stopped.");   return; }                
                 switch(a.context) {
-                    case Activity.Context.Job:
-                    case Activity.Context.JobAsync:
-                    case Activity.Context.Update:      if(lu.la.Contains(a))  lu.la.Remove(a);  break;
-                    case Activity.Context.LateUpdate:  if(llu.la.Contains(a)) llu.la.Remove(a); break;
-                    case Activity.Context.FixedUpdate: if(lfu.la.Contains(a)) lfu.la.Remove(a); break;
-                    case Activity.Context.Async:       if(lau.la.Contains(a)) lau.la.Remove(a); break;
+                    case ActivityContext.Job:
+                    case ActivityContext.JobAsync:
+                    case ActivityContext.Update:      if(lu.la.Contains(a))  lu.la.Remove(a);  break;
+                    case ActivityContext.LateUpdate:  if(llu.la.Contains(a)) llu.la.Remove(a); break;
+                    case ActivityContext.FixedUpdate: if(lfu.la.Contains(a)) lfu.la.Remove(a); break;
+                    case ActivityContext.Async:       if(lau.la.Contains(a)) lau.la.Remove(a); break;
                     //Threaded lists its better to null the element and allow removal during the synced execution of the thread
-                    case Activity.Context.Thread: { 
+                    case ActivityContext.Thread: { 
                         //Search for the activity and null it for next pruning
                         for(int i=0;i<lt.Length;i++) if(lt[i].SafeInvalidate(a)) break;             
                         //Safely invalidate for removal
@@ -479,7 +477,7 @@ namespace UnityExt.Core {
                     }
                     break;
                 }
-                a.OnStopInternal();
+                a.OnManagerRemoveInternal();
             }
 
             /// <summary>
@@ -532,56 +530,48 @@ namespace UnityExt.Core {
             /// </summary>
             /// <param name="p_id"></param>
             /// <returns></returns>
-            public Activity Find(string p_id,Activity.Context p_context) {
+            public T Find<T>(string p_id,ActivityContext p_context) where T : Activity {
                 //Local ref
-                Activity res = null;
+                T res = null;
                 //Shortcut bool
                 bool all_ctx = ((int)p_context)<0;
                 //Search threads if threaded or all ctxs
-                bool search_threads = p_context == Activity.Context.Thread ? true : all_ctx;
+                bool search_threads = p_context == ActivityContext.Thread ? true : all_ctx;
                 //Search thread nodes
-                if(p_context == Activity.Context.Thread) {
-                    m_id_query = p_id;
+                if(p_context == ActivityContext.Thread) {                    
                     for(int i=0;i<lt.Length;i++) {
                         List it = lt[i];
                         //Search active node
-                        res = it.Find(m_id_query);
+                        res = it.Find<T>(p_id);
                         //If found break
                         if(res!=null) break;
                     }                    
                     //Search queued nodes if no result
-                    if(res==null) res = ltq_a.Find(FindActivityById);
-                    //Clear global search query
-                    m_id_query = "";
+                    if(res==null) { res = FindByQuery<T>(ltq_a,p_id); }                    
                     //If thread only return
-                    if(p_context == Activity.Context.Thread) return res;
+                    if(p_context == ActivityContext.Thread) return res;
                     //If there is a result return
                     if(res!=null) return res;
                 }
                 //Try fetch the activity list
                 List la = GetActivityList(p_context);
                 //If single context find in the single list
-                if(la!=null) return la.Find(p_id);
+                if(la!=null) return la.Find<T>(p_id);
                 //If not search in all
-                res = lu.Find(p_id);  if(res!=null) return res;
-                res = llu.Find(p_id); if(res!=null) return res;
-                res = lfu.Find(p_id); if(res!=null) return res;
-                res = lau.Find(p_id); if(res!=null) return res;
+                res = lu.Find<T>(p_id);  if(res!=null) return res;
+                res = llu.Find<T>(p_id); if(res!=null) return res;
+                res = lfu.Find<T>(p_id); if(res!=null) return res;
+                res = lau.Find<T>(p_id); if(res!=null) return res;
                 //Return whatever
                 return res;
             }
-            /// <summary>
-            /// Helpers for Find/FindAll
-            /// </summary>
-            private string m_id_query;
-            private bool FindActivityById(Activity it) { return it==null ? false : (it.id == m_id_query); }
-            
+
             /// <summary>
             /// Finds an activity searching all contexts.
             /// </summary>
             /// <param name="p_id"></param>
             /// <returns></returns>
-            public Activity Find(string p_id) { return Find(p_id,(Activity.Context)(-1)); }
+            public T Find<T>(string p_id) where T : Activity { return Find<T>(p_id,(ActivityContext)(-1)); }
 
             /// <summary>
             /// Finds all activities, matching the id.
@@ -589,38 +579,39 @@ namespace UnityExt.Core {
             /// <param name="p_id"></param>
             /// <param name="p_context"></param>
             /// <returns></returns>
-            public System.Collections.Generic.List<Activity> FindAll(string p_id,Activity.Context p_context) {
+            public SCG.List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity {
                 //Local ref
-                SCG.List<Activity> res = new SCG.List<Activity>();
+                SCG.List<T> res = new SCG.List<T>();
                 //Shortcut bool
                 bool all_ctx = ((int)p_context)<0;
                 //Search threads if threaded or all ctxs
-                bool search_threads = p_context == Activity.Context.Thread ? true : all_ctx;
+                bool search_threads = p_context == ActivityContext.Thread ? true : all_ctx;
                 //Search thread nodes
-                if(search_threads) {
-                    m_id_query = p_id;
+                if(search_threads) {                    
                     //Search active nodes
                     for(int i=0;i<lt.Length;i++) {
                         List it = lt[i];
                         //Search active nodes
-                        res.AddRange(it.FindAll(m_id_query));                        
-                    }                      
-                    //Search queued nodes
-                    if(ltq_a!=null)res.AddRange(ltq_a.FindAll(FindActivityById));
-                    //Clear global search query
-                    m_id_query = "";
+                        res.AddRange(it.FindAll<T>(p_id));                        
+                    }
+                //Search queued nodes
+                    if(ltq_a!=null) { res.AddRange(FindAllByQuery<T>(ltq_a,p_id)); }                    
                     //If thread only return
-                    if(p_context == Activity.Context.Thread) return res;
+                    if(p_context == ActivityContext.Thread) return res;
                 }
                 //Try fetch the activity list
                 List la = GetActivityList(p_context);
                 //If single context find in the single list
-                if(la!=null) { res.AddRange(la.FindAll(p_id)); return res; }
+                if(la!=null) { 
+                    SCG.List<T> l = la.FindAll<T>(p_id);
+                    res.AddRange(l);
+                    return res; 
+                }
                 //If not search in all
-                res.AddRange(lu.FindAll(p_id));  
-                res.AddRange(llu.FindAll(p_id)); 
-                res.AddRange(lfu.FindAll(p_id)); 
-                res.AddRange(lau.FindAll(p_id)); 
+                res.AddRange(lu.FindAll<T>(p_id));  
+                res.AddRange(llu.FindAll<T>(p_id)); 
+                res.AddRange(lfu.FindAll<T>(p_id)); 
+                res.AddRange(lau.FindAll<T>(p_id)); 
                 //Return results
                 return res;
             }
@@ -630,7 +621,23 @@ namespace UnityExt.Core {
             /// </summary>
             /// <param name="p_id"></param>
             /// <returns></returns>
-            public SCG.List<Activity> FindAll(string p_id) { return FindAll(p_id,(Activity.Context)(-1)); }
+            public SCG.List<T> FindAll<T>(string p_id) where T : Activity { return FindAll<T>(p_id,ActivityContext.All); }
+
+            #region Find Helpers
+            internal bool QueryMatch<T>(Activity it,string p_id) where T : Activity {
+                //Skip invalid
+                if(it==null) return false;
+                //If there is an id query and it doesnt match skip
+                if(p_id!="") if(it.id!=p_id) return false;
+                //Check the type
+                if(!(it is T)) return false;
+                //All matches
+                return true;
+            }            
+            internal T FindByQuery<T>(SCG.List<Activity> l,string p_id) where T : Activity { for(int i=0;i<l.Count;i++) if(QueryMatch<T>(l[i],p_id)) return (T)l[i]; return null; }
+            internal SCG.List<T> FindAllByQuery<T>(SCG.List<Activity> l,string p_id) where T : Activity { SCG.List<T> res = new SCG.List<T>(); for(int i=0;i<l.Count;i++) if(QueryMatch<T>(l[i],p_id)) { res.Add((T)l[i]); } return res; }
+            #endregion
+
 
             #endregion
 

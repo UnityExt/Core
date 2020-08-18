@@ -82,12 +82,12 @@ namespace UnityExt.Core {
         float GetProgress();
     }
 
-    #region enum StatusFlag
+    #region enum StatusType
 
     /// <summary>
     /// Enumeration that describes possible outcomes from executions.
     /// </summary>
-    public enum StatusFlag {
+    public enum StatusType {
         /// <summary>
         /// Invalid or inconsistent status
         /// </summary>
@@ -132,6 +132,6 @@ namespace UnityExt.Core {
     /// <summary>
     /// Interface that provides execution status for managers to handle group of executing nodes.
     /// </summary>
-    public interface IStatusProvider : IStatusProvider<StatusFlag> { }
+    public interface IStatusProvider : IStatusProvider<StatusType> { }
 
 }

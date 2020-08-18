@@ -14,79 +14,83 @@ using UnityEditor;
 
 namespace UnityExt.Core {
 
+    #region enum ActivityContext
+
+    /// <summary>
+    /// Enumeration that describes the execution context of the activity.
+    /// </summary>
+    public enum ActivityContext {
+        /// <summary>
+        /// All contexts wild card.
+        /// </summary>
+        All = -1,
+        /// <summary>
+        /// Runs inside Monobehaivour.Update
+        /// </summary>
+        Update,
+        /// <summary>
+        /// Runs inside Monobehaivour.LateUpdate
+        /// </summary>
+        LateUpdate,
+        /// <summary>
+        /// Runs inside Monobehaivour.FixedUpdate
+        /// </summary>
+        FixedUpdate,
+        /// <summary>
+        /// Runs inside Monobehaivour.Update but only inside 'async-slice' duration per frame
+        /// </summary>
+        Async,
+        /// <summary>
+        /// Runs inside a thread, watch out to not use Unity API elements inside it.
+        /// </summary>
+        Thread,
+        /// <summary>
+        /// Runs the job passed as parameter in a loop and using schedule
+        /// </summary>
+        JobAsync,
+        /// <summary>
+        /// Runs the job passed as parameter in a loop and using run
+        /// </summary>
+        Job
+    }
+
+    #endregion
+
+    #region enum ActivityState
+
+    /// <summary>
+    /// Enumeration that describes the execution state of the activity.
+    /// </summary>
+    public enum ActivityState {
+        /// <summary>
+        /// Just created activity.
+        /// </summary>
+        Idle,
+        /// <summary>
+        /// Waiting for execution
+        /// </summary>
+        Queued,
+        /// <summary>
+        /// Active execution.
+        /// </summary>
+        Running,
+        /// <summary>
+        /// Finished
+        /// </summary>
+        Complete,
+        /// <summary>
+        /// Stopped
+        /// </summary>
+        Stopped
+    }
+
+    #endregion
+
     /// <summary>
     /// Class that implements any async activity/processing.
     /// It can run in different contexts inside unity (mainthread) or separate thread, offering an abstraction layer Monobehaviour/Thread agnostic.
     /// </summary>
     public class Activity : INotifyCompletion, IStatusProvider, IProgressProvider {
-
-        #region enum Context
-
-        /// <summary>
-        /// Enumeration that describes the execution context of the activity.
-        /// </summary>
-        public enum Context {
-            /// <summary>
-            /// Runs inside Monobehaivour.Update
-            /// </summary>
-            Update,
-            /// <summary>
-            /// Runs inside Monobehaivour.LateUpdate
-            /// </summary>
-            LateUpdate,
-            /// <summary>
-            /// Runs inside Monobehaivour.FixedUpdate
-            /// </summary>
-            FixedUpdate,
-            /// <summary>
-            /// Runs inside Monobehaivour.Update but only inside 'async-slice' duration per frame
-            /// </summary>
-            Async,
-            /// <summary>
-            /// Runs inside a thread, watch out to not use Unity API elements inside it.
-            /// </summary>
-            Thread,
-            /// <summary>
-            /// Runs the job passed as parameter in a loop and using schedule
-            /// </summary>
-            JobAsync,
-            /// <summary>
-            /// Runs the job passed as parameter in a loop and using run
-            /// </summary>
-            Job
-        }
-
-        #endregion
-
-        #region enum State
-
-        /// <summary>
-        /// Enumeration that describes the execution state of the activity.
-        /// </summary>
-        public enum State {
-            /// <summary>
-            /// Just created activity.
-            /// </summary>
-            Idle,
-            /// <summary>
-            /// Waiting for execution
-            /// </summary>
-            Queued,
-            /// <summary>
-            /// Active execution.
-            /// </summary>
-            Running,
-            /// <summary>
-            /// Finished
-            /// </summary>
-            Complete,
-            /// <summary>
-            /// Stopped
-            /// </summary>
-            Stopped
-        }
-
-        #endregion
 
         #region class Manager
 
@@ -206,7 +210,7 @@ namespace UnityExt.Core {
         /// <param name="p_on_complete"></param>
         /// <param name="p_context"></param>
         /// <returns></returns>
-        static internal Activity Create(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,Context p_context) {
+        static internal Activity Create(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,ActivityContext p_context) {
             Activity a = new Activity(p_id,p_context);
             a.OnCompleteEvent = p_on_complete;
             a.OnExecuteEvent  = p_on_execute;
@@ -216,19 +220,19 @@ namespace UnityExt.Core {
         #endregion
 
         /// <summary>
-        /// Adds activity for exection.
+        /// Adds any object implementing the interfaces for exection.
         /// </summary>
         /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
         static public void Add(object p_node) { if(manager)manager.handler.AddInterface(p_node); }
 
         /// <summary>
-        /// Removes the activity from exection.
+        /// Removes any object implementing the interfaces for exection.
         /// </summary>
         /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
         static public void Remove(object p_node) { if(m_manager)m_manager.handler.RemoveInterface(p_node); }
 
         /// <summary>
-        /// Removes the activity from exection.
+        /// Removes all activities and interfaces from exection.
         /// </summary>
         static public void Clear() { if(m_manager)m_manager.handler.Clear(); }
 
@@ -237,30 +241,49 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_id">Activity id to search.</param>
         /// <param name="p_context">Specific context to be searched.</param>
+        /// <typeparam name="T">Activity derived type.</typeparam>
         /// <returns>Activity found or null</returns>
-        static public Activity Find(string p_id,Context p_context) { if(manager) return manager.handler.Find(p_id,p_context); return null; }
+        static public T Find<T>(string p_id,ActivityContext p_context) where T : Activity { if(manager) return manager.handler.Find<T>(p_id,p_context); return null; }
 
         /// <summary>
         /// Searches for a single activity by id in all contexts.
         /// </summary>
         /// <param name="p_id">Activity id to search.</param>        
+        /// <typeparam name="T">Activity derived type.</typeparam>
         /// <returns>Activity found or null</returns>
-        static public Activity Find(string p_id) { return Find(p_id,(Context)(-1)); }
+        static public T Find<T>(string p_id) where T : Activity { return Find<T>(p_id,(ActivityContext)(-1)); }
 
         /// <summary>
         /// Searches for all activities matching the id and context.
         /// </summary>
         /// <param name="p_id">Activity id to search.</param>
         /// <param name="p_context">Specific context to be searched.</param>
-        /// <returns>List of results or an empty list.</returns>
-        static public List<Activity> FindAll(string p_id,Context p_context) { List<Activity> res=null; if(manager) res = manager.handler.FindAll(p_id,p_context); return res==null ? new List<Activity>() : res; }
+        /// <typeparam name="T">Activity derived type.</typeparam>
+        /// <returns>List of results or empty list.</returns>
+        static public List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity { List<T> res=null; if(manager) res = manager.handler.FindAll<T>(p_id,p_context); return res==null ? new List<T>() : res; }
+
+        /// <summary>
+        /// Searches for all activities matching the context.
+        /// </summary>        
+        /// <param name="p_context">Specific context to be searched.</param>
+        /// <typeparam name="T">Activity derived type.</typeparam>
+        /// <returns>List of results or empty list.</returns>
+        static public List<T> FindAll<T>(ActivityContext p_context) where T : Activity { return FindAll<T>("",p_context); }
 
         /// <summary>
         /// Searches for all activities matching the id in all contexts.
         /// </summary>
         /// <param name="p_id">Activity id to search.</param>        
-        /// <returns>List of results or an empty list.</returns>
-        static public List<Activity> FindAll(string p_id) { return FindAll(p_id,(Context)(-1)); }
+        /// <typeparam name="T">Activity derived type.</typeparam>
+        /// <returns>List of results or empty list.</returns>
+        static public List<T> FindAll<T>(string p_id) where T : Activity { return FindAll<T>(p_id,(ActivityContext)(-1)); }
+
+        /// <summary>
+        /// Searches all activities regardless of 'id'.
+        /// </summary>
+        /// <typeparam name="T">Activity derived type.</typeparam>
+        /// <returns>List of results or empty list.</returns>
+        static public List<T> FindAll<T>() where T : Activity { return FindAll<T>("",(ActivityContext)(-1)); }
 
         #endregion
 
@@ -275,7 +298,7 @@ namespace UnityExt.Core {
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
         /// <param name="p_context">Execution context to run.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Predicate<Activity> p_callback,Context p_context) { Activity a = Create(p_id,p_callback,null,p_context); a.Start(); return a; }
+        static public Activity Run(string p_id,System.Predicate<Activity> p_callback,ActivityContext p_context) { Activity a = Create(p_id,p_callback,null,p_context); a.Start(); return a; }
             
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
@@ -284,7 +307,7 @@ namespace UnityExt.Core {
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
         /// <param name="p_context">Execution context to run.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(System.Predicate<Activity> p_callback,Context p_context) { Activity a = Create("",p_callback,null,p_context); a.Start(); return a; }
+        static public Activity Run(System.Predicate<Activity> p_callback,ActivityContext p_context) { Activity a = Create("",p_callback,null,p_context); a.Start(); return a; }
 
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
@@ -292,14 +315,14 @@ namespace UnityExt.Core {
         /// <param name="p_id">Activity id for searching.</param>
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
         /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Predicate<Activity> p_callback) { Activity a = Create(p_id,p_callback,null,Context.Update); a.Start(); return a; }
+        static public Activity Run(string p_id,System.Predicate<Activity> p_callback) { Activity a = Create(p_id,p_callback,null,ActivityContext.Update); a.Start(); return a; }
 
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
         /// </summary>
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
         /// <returns>The running activity</returns>
-        static public Activity Run(System.Predicate<Activity> p_callback) { Activity a = Create("",p_callback,null,Context.Update); a.Start(); return a; }
+        static public Activity Run(System.Predicate<Activity> p_callback) { Activity a = Create("",p_callback,null,ActivityContext.Update); a.Start(); return a; }
 
         #endregion
 
@@ -316,7 +339,7 @@ namespace UnityExt.Core {
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <param name="p_context">Execution context.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Action<Activity> p_callback,Context p_context) { Activity a = Create(p_id,null,p_callback,p_context); a.Start(); return a; }
+        static public Activity Run(string p_id,System.Action<Activity> p_callback,ActivityContext p_context) { Activity a = Create(p_id,null,p_callback,p_context); a.Start(); return a; }
             
         /// <summary>
         /// Creates and start a single execution activity.
@@ -324,7 +347,7 @@ namespace UnityExt.Core {
         /// <param name="p_id">Activity id for searching.</param>
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Action<Activity> p_callback) { Activity a = Create(p_id,null,p_callback,Context.Update); a.Start(); return a; }
+        static public Activity Run(string p_id,System.Action<Activity> p_callback) { Activity a = Create(p_id,null,p_callback,ActivityContext.Update); a.Start(); return a; }
 
         /// <summary>
         /// Creates and start a single execution activity.
@@ -332,14 +355,14 @@ namespace UnityExt.Core {
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <param name="p_context">Execution context.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(System.Action<Activity> p_callback,Context p_context) { Activity a = Create("",null,p_callback,p_context); a.Start(); return a; }
+        static public Activity Run(System.Action<Activity> p_callback,ActivityContext p_context) { Activity a = Create("",null,p_callback,p_context); a.Start(); return a; }
 
         /// <summary>
         /// Creates and start a single execution activity.
         /// </summary>
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <returns>The running activity</returns>
-        static public Activity Run(System.Action<Activity> p_callback) { Activity a = Create("",null,p_callback,Context.Update); a.Start(); return a; }
+        static public Activity Run(System.Action<Activity> p_callback) { Activity a = Create("",null,p_callback,ActivityContext.Update); a.Start(); return a; }
 
         #endregion
 
@@ -355,17 +378,18 @@ namespace UnityExt.Core {
         /// <summary>
         /// Execution state
         /// </summary>
-        public State state { get; internal set; }        
+        public ActivityState state { get; internal set; }        
         
         /// <summary>
         /// Execution context.
         /// </summary>
-        public Context context { get; internal set; }
+        public ActivityContext context { get { return m_context; } internal set { m_context = value == ActivityContext.All ? ActivityContext.Update : value; } }
+        private ActivityContext m_context;
 
         /// <summary>
         /// Has the activity finished.
         /// </summary>
-        public bool completed { get { return state == State.Complete; } }
+        public bool completed { get { return state == ActivityState.Complete; } }
 
         #region Events
 
@@ -410,6 +434,7 @@ namespace UnityExt.Core {
         internal Task m_task;
         internal int  m_yield_ms;
         internal CancellationTokenSource m_task_cancel;
+        internal bool Is<T>() where T : Activity { return this is T; }
         
         #region CTOR
 
@@ -418,26 +443,26 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_id">Activity id for searching</param>
         /// <param name="p_context">Execution Context</param>
-        public Activity(string p_id,Context p_context) { InitActivity(p_id,p_context); }
+        public Activity(string p_id,ActivityContext p_context) { InitActivity(p_id,p_context); }
         
         /// <summary>
         /// Creates a new activity, default to 'Update' context.
         /// </summary>
         /// <param name="p_id">Activity id for searching</param>
-        public Activity(string p_id) { InitActivity(p_id, Context.Update); }
+        public Activity(string p_id) { InitActivity(p_id, ActivityContext.Update); }
 
         /// <summary>
         /// Creates a new activity, default to 'Update' context and auto generated id.
         /// </summary>
-        public Activity() { InitActivity("", Context.Update); }
+        public Activity() { InitActivity("", ActivityContext.Update); }
 
         /// <summary>
         /// Internal build the activity
         /// </summary>
         /// <param name="p_id"></param>
         /// <param name="p_context"></param>
-        internal void InitActivity(string p_id,Context p_context) {
-            state       = State.Idle;
+        internal void InitActivity(string p_id,ActivityContext p_context) {
+            state       = ActivityState.Idle;
             context     = p_context;
             string tn   = string.IsNullOrEmpty(m_type_name) ? (m_type_name = GetType().Name.ToLower()) : m_type_name;
             id          = string.IsNullOrEmpty(p_id) ? tn+"-"+GetHashCode().ToString("x6") : p_id;                             
@@ -451,10 +476,10 @@ namespace UnityExt.Core {
         /// </summary>
         public void Start() {
             //If activity properly not running reset to idle
-            if(state == State.Complete) state = State.Idle;
-            if(state == State.Stopped)  state = State.Idle;
+            if(state == ActivityState.Complete) state = ActivityState.Idle;
+            if(state == ActivityState.Stopped)  state = ActivityState.Idle;
             //If idle init task
-            if(state == State.Idle)
+            if(state == ActivityState.Idle)
             if(m_task==null) {
                 m_task_cancel = new CancellationTokenSource();
                 m_task        = new Task(OnTaskCompleteDummy,m_task_cancel.Token);
@@ -481,19 +506,19 @@ namespace UnityExt.Core {
         /// </summary>
         virtual internal void Execute() {
             switch(state) {
-                case State.Stopped:  return;
-                case State.Complete: return;
-                case State.Idle:     return;
-                case State.Queued:  { 
+                case ActivityState.Stopped:  return;
+                case ActivityState.Complete: return;
+                case ActivityState.Idle:     return;
+                case ActivityState.Queued:  { 
                     if(!CanStart())         break;
                     if(!CanStartInternal()) break;
                     OnStart();                    
-                    state=State.Running; 
+                    state=ActivityState.Running; 
                 }
                 break;
             }
             switch(state) {
-                case State.Running:  {
+                case ActivityState.Running:  {
                     //Internal execution
                     bool v0 = OnExecuteInternal();
                     //Repeat until completion (always completed for regular activity)
@@ -510,7 +535,7 @@ namespace UnityExt.Core {
                     //If can't complete keep going
                     if(!v3) break;
                     //Mark complete
-                    state = State.Complete;
+                    state = ActivityState.Complete;
                     //Call internal handler
                     OnComplete();
                     //Call delegate
@@ -579,23 +604,22 @@ namespace UnityExt.Core {
         virtual internal bool CanCompleteInternal()  { return true; }
 
         /// <summary>
-        /// Handler for when the activity was removed.
+        /// Handler for when the activity was officially removed from Activity Manager.
         /// </summary>
-        virtual internal void OnStopInternal() { 
+        virtual internal void OnManagerRemoveInternal() { 
             //Only run if not completed
-            if(state == State.Complete) return;
-            state = State.Stopped;
+            if(state == ActivityState.Complete) return;
+            state = ActivityState.Stopped;
             if(m_task==null) return;
             m_task_cancel.Cancel();
             m_task        = null;
             m_task_cancel = null;
             OnStop();
-        }
-
+        }        
         /// <summary>
-        /// Handler for when this activity was just added.
+        /// Handler for when this node is added in the manager.
         /// </summary>
-        virtual internal void OnAddedInternal() { 
+        virtual internal void OnManagerAddInternal() { 
             OnAdded(); 
         }
 
@@ -630,15 +654,15 @@ namespace UnityExt.Core {
         /// Returns this activity execution state converted to status flags.
         /// </summary>
         /// <returns>Current activity status</returns>
-        public StatusFlag GetStatus() {
+        public StatusType GetStatus() {
             switch(state) {
-                case State.Idle:
-                case State.Queued:   return StatusFlag.Idle;
-                case State.Running:  return StatusFlag.Running;
-                case State.Complete: return StatusFlag.Success;
-                case State.Stopped:  return StatusFlag.Cancelled;
+                case ActivityState.Idle:
+                case ActivityState.Queued:   return StatusType.Idle;
+                case ActivityState.Running:  return StatusType.Running;
+                case ActivityState.Complete: return StatusType.Success;
+                case ActivityState.Stopped:  return StatusType.Cancelled;
             }
-            return StatusFlag.Invalid;
+            return StatusType.Invalid;
         }
 
         #endregion
@@ -651,11 +675,11 @@ namespace UnityExt.Core {
         /// <returns>Activity progress, eihter 0.0 = not running, 0.5f = running and 1.0 = complete/stopped.</returns>
         virtual public float GetProgress() {
             switch(state) {
-                case State.Idle:  
-                case State.Queued:   return 0f;
-                case State.Running:  return 0.5f;
-                case State.Complete: return 1f;
-                case State.Stopped:  return 1f;
+                case ActivityState.Idle:  
+                case ActivityState.Queued:   return 0f;
+                case ActivityState.Running:  return 0.5f;
+                case ActivityState.Complete: return 1f;
+                case ActivityState.Stopped:  return 1f;
             }
             return 0f;
         }
@@ -803,7 +827,7 @@ namespace UnityExt.Core {
         /// <param name="p_id"></param>
         internal void InitActivity(string p_id,bool p_async) {
             //Init base activity
-            InitActivity(p_id,p_async ? Context.JobAsync : Context.Job);            
+            InitActivity(p_id,p_async ? ActivityContext.JobAsync : ActivityContext.Job);            
             //Init flags
             m_has_job          = false;
             m_has_job_parallel = false;
@@ -890,10 +914,10 @@ namespace UnityExt.Core {
         /// <summary>
         /// Overrides the base class allowing to switch between job and jobsync
         /// </summary>
-        new public Context context {
+        new public ActivityContext context {
             get { return base.context; }
             set {
-                if(value != Context.Job) if(value != Context.JobAsync) { Debug.LogWarning($"Activity.{typeof(T).Name}> Can't choose contexts different than Job/JobAsync, will ignore."); return; }
+                if(value != ActivityContext.Job) if(value != ActivityContext.JobAsync) { Debug.LogWarning($"Activity.{typeof(T).Name}> Can't choose contexts different than Job/JobAsync, will ignore."); return; }
                 if(m_is_scheduled) { handle.Complete(); m_is_scheduled = false; }
                 base.context = value;
             }
@@ -937,10 +961,10 @@ namespace UnityExt.Core {
         /// <summary>
         /// Handles when the job leaves the execution pool.
         /// </summary>
-        internal override void OnStopInternal() {
+        internal override void OnManagerRemoveInternal() {
             switch(state) {
                 //No need to run because 'complete' already did it
-                case State.Complete: break;
+                case ActivityState.Complete: break;
                 default: {
                     //Ensure completion and clears handle
                     if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
@@ -950,7 +974,7 @@ namespace UnityExt.Core {
                 break;
             }
             //Execute the rest of the stopping and signal extension's 'OnStop'
-            base.OnStopInternal();
+            base.OnManagerRemoveInternal();
         }
 
         /// <summary>
@@ -961,8 +985,8 @@ namespace UnityExt.Core {
             //If no job instance return 'complete'
             if(!m_has_job) return false;
             //Invalid contexts return 'complete'
-            if(context != Context.Job) 
-            if(context != Context.JobAsync) return false;
+            if(context != ActivityContext.Job) 
+            if(context != ActivityContext.JobAsync) return false;
             //If type is parallel and length/steps are set
             bool is_parallel = m_has_job_parallel ? (m_job_parallel_length>=0 && m_job_parallel_step>=0) : false;                                    
             //Init the local variables
@@ -972,8 +996,8 @@ namespace UnityExt.Core {
             object[]   job_fn_args = null;
             MethodInfo job_fn      = null;
             switch(context) {                    
-                case Context.Job:           { job_fn = is_parallel ? m_jbpf_run      : m_jb_run;       job_fn_args = is_parallel ? m_args2 : m_args1; } break; 
-                case Context.JobAsync:      { job_fn = is_parallel ? m_jbpf_schedule : m_jb_schedule;  job_fn_args = is_parallel ? m_args4 : m_args2; } break;
+                case ActivityContext.Job:           { job_fn = is_parallel ? m_jbpf_run      : m_jb_run;       job_fn_args = is_parallel ? m_args2 : m_args1; } break; 
+                case ActivityContext.JobAsync:      { job_fn = is_parallel ? m_jbpf_schedule : m_jb_schedule;  job_fn_args = is_parallel ? m_args4 : m_args2; } break;
             }            
             //If invalids return 'completed'
             if(job_fn_args == null) return false;
@@ -984,7 +1008,7 @@ namespace UnityExt.Core {
             switch(context) {
                 //IJobParallelForExtensions.Run(job,length)
                 //IJobExtensions.Run(job)
-                case Context.Job: {                    
+                case ActivityContext.Job: {                    
                     //Assign parameters
                     if(is_parallel) {
                         job_fn_args[1] = m_job_parallel_length;
@@ -997,7 +1021,7 @@ namespace UnityExt.Core {
                 break;
                 //IJobParallelForExtensions.Schedule(job,length,steps,depend_handle)                    
                 //IJobExtensions.Schedule(job,depend_handle)
-                case Context.JobAsync: {
+                case ActivityContext.JobAsync: {
                     //If something is scheduled already, skip
                     if(m_is_scheduled) break; 
                     //Assign parameters
@@ -1022,7 +1046,7 @@ namespace UnityExt.Core {
                 //Invoke the method
                 object invoke_res = job_fn.Invoke(null,job_fn_args);
                 //If async mark scheduled as true and store the handle
-                if(context == Context.JobAsync) {
+                if(context == ActivityContext.JobAsync) {
                     m_is_scheduled = true;
                     handle = (JobHandle)invoke_res;
                 }                
