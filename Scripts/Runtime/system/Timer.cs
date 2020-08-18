@@ -35,12 +35,15 @@ namespace UnityExt.Core {
         /// Static CTOR
         /// </summary>
         static Timer() {
+            //Start the thread based timer upon first usage.
             if(m_clock_sys == null) { m_clock_sys = new System.Diagnostics.Stopwatch(); m_clock_sys.Start(); }
         }  
         /// <summary>
         /// Single system time instance
         /// </summary>
         static System.Diagnostics.Stopwatch m_clock_sys;
+
+        #region Atomic Clock
 
         /// <summary>
         /// Path to be used on the creation of an atomic timer.
@@ -56,8 +59,6 @@ namespace UnityExt.Core {
                 return atomicClockPath;
             }
         }
-
-        #region Atomic Timestamp
 
         /// <summary>
         /// Asserts the location of the atomic clock reference files. Return true if all good.
@@ -174,7 +175,7 @@ namespace UnityExt.Core {
             get {
                 switch(state) {
                     case State.Idle:   return 0f;
-                    case State.Queued: return 0f;                    
+                    case State.Queued: return 0f;
                 }
                 return m_elapsed;
             }
@@ -252,44 +253,7 @@ namespace UnityExt.Core {
         }
 
         #endregion
-
-        /// <summary>
-        /// Internals.
-        /// </summary>
-        private float    m_clock_time;
-        private float    m_clock_stamp;
-        private float    m_clock_delta_time;
-
-        /// <summary>
-        /// Get current clock based on the 
-        /// </summary>
-        /// <returns>Elapsed time in seconds since the last timestamp.</returns>
-        public float GetClock() {
-            float t = 0f;  
-            float ivts = Time.timeScale<=0f ? 1f : (1f/Time.timeScale);
-            switch(type) {                
-                case Type.Unity:  { t = Time.time * (unscaled ? ivts : 1f); } break; 
-                case Type.System: { double ms = (double)m_clock_sys.ElapsedMilliseconds; t = (float)(ms*0.001); } break;
-            }
-            #if UNITY_EDITOR
-            if(!Application.isPlaying) {
-                if(type == Type.Unity) {
-                    t = (float)UnityEditor.EditorApplication.timeSinceStartup;
-                }
-            }
-            #endif
-            return t - m_clock_stamp;
-        }
         
-        /// <summary>
-        /// Resets the time stamps.
-        /// </summary>
-        internal void ResetClock() {
-            m_clock_stamp      = 0f;
-            m_clock_stamp      = GetClock();
-            m_clock_time       = 0f;
-        }
-
         #region CTOR
 
         /// <summary>
@@ -299,18 +263,29 @@ namespace UnityExt.Core {
         /// <param name="p_delay">Delay in seconds before execution start.</param>
         /// <param name="p_duration">Duration in seconds per execution step.</param>
         /// <param name="p_count">Max number of steps before completion.</param>
-        /// <param name="p_mode">Clock time tracking mode.</param>
+        /// <param name="p_type">Clock time tracking mode.</param>
         /// <param name="p_context">Activity execution context.</param>
-        public Timer(string p_id,float p_duration,int p_count=1,Type p_mode = Type.Unity,Context p_context = Context.Update) : base(p_id,p_context) { CreateTimer(p_duration,p_count,p_mode); }
+        public Timer(string p_id,float p_duration,int p_count=1,Type p_type = Type.Unity,Context p_context = Context.Update) : base(p_id,p_context) { CreateTimer(p_duration,p_count,p_type); }
         /// <summary>
         /// Creates a new Timer instance.
         /// </summary>        
         /// <param name="p_delay">Delay in seconds before execution start.</param>
         /// <param name="p_duration">Duration in seconds per execution step.</param>
         /// <param name="p_count">Max number of steps before completion.</param>
-        /// <param name="p_mode">Clock time tracking mode.</param>
+        /// <param name="p_type">Clock time tracking mode.</param>
         /// <param name="p_context">Activity execution context.</param>
-        public Timer(float p_duration,int p_count=1,Type p_mode = Type.Unity,Context p_context = Context.Update) : base("",p_context) { CreateTimer(p_duration,p_count,p_mode); }
+        public Timer(float p_duration=0f,int p_count=1,Type p_type = Type.Unity,Context p_context = Context.Update) : base("",p_context) { CreateTimer(p_duration,p_count,p_type); }
+        /// <summary>
+        /// Creates a new Timer instance.
+        /// </summary>
+        /// <param name="p_id">Id of the Timer.</param>
+        /// <param name="p_mode">Clock time tracking mode.</param>
+        public Timer(string p_id,Type p_mode = Type.System) : base(p_id, Context.Thread) { CreateTimer(0f,0,p_mode); }
+        /// <summary>
+        /// Creates a new Timer instance.
+        /// </summary>        
+        /// <param name="p_type">Clock time tracking mode.</param>
+        public Timer(Type p_type = Type.System) : base("", Context.Thread) { CreateTimer(0f,0,p_type); }                
 
         #endregion
 
@@ -345,6 +320,8 @@ namespace UnityExt.Core {
 
         #endregion
 
+        #region Operation
+
         /// <summary>
         /// Starts the timer immediately.
         /// </summary>
@@ -360,7 +337,7 @@ namespace UnityExt.Core {
         }
 
         /// <summary>
-        /// Resets the Timer entirely, but keep it  running.
+        /// Resets the Timer entirely, and keep it  running.
         /// </summary>
         public void Restart() {            
             paused = false;
@@ -380,7 +357,7 @@ namespace UnityExt.Core {
         }
 
         /// <summary>
-        /// Restarts only the current step, but keep it running.
+        /// Restarts only the current step, and keep it running.
         /// </summary>
         public void RestartStep() {
             paused = false;
@@ -395,6 +372,46 @@ namespace UnityExt.Core {
                 }
                 break;
             }
+        }
+
+        /// <summary>
+        /// Get current clock based on the time tracking methods.
+        /// Unity  = Time.time / Time.timeScale
+        /// System = clock.EllapsedMilliseconds
+        /// </summary>
+        /// <returns>Elapsed time in seconds since the last timestamp.</returns>
+        public float GetClock() {
+            float t = 0f;              
+            switch(type) {                
+                case Type.Unity:  { 
+                    //Time.unscaledTime isn't affected by editor's pause/step
+                    float ivts = Time.timeScale<=0f ? 1f : (1f/Time.timeScale);
+                    t = Time.time * (unscaled ? ivts : 1f); 
+                    #if UNITY_EDITOR
+                    //If creating the timer in editor, use this variable
+                    t = (float)UnityEditor.EditorApplication.timeSinceStartup;
+                    #endif
+                }
+                break; 
+                case Type.System: { double ms = (double)m_clock_sys.ElapsedMilliseconds; t = (float)(ms*0.001); } break;
+            }            
+            return t - m_clock_stamp;
+        }
+        private float    m_clock_time;
+        private float    m_clock_stamp;
+        private float    m_clock_delta_time;
+
+        #endregion
+
+        #region Internal Operation
+
+        /// <summary>
+        /// Resets the time stamps.
+        /// </summary>
+        internal void ResetClock() {
+            m_clock_stamp      = 0f;
+            m_clock_stamp      = GetClock();
+            m_clock_time       = 0f;
         }
 
         /// <summary>
@@ -425,10 +442,12 @@ namespace UnityExt.Core {
         /// </summary>
         /// <returns></returns>
         internal override bool CanStartInternal() {
+            //If delay is reached, reset elapsed and keep going
             if(m_elapsed>=delay) { 
                 m_elapsed = 0f; 
                 return true; 
             }
+            //Increment 'elapsed' until 'delay'
             m_elapsed += m_clock_delta_time;
             return false;
         }
@@ -447,7 +466,7 @@ namespace UnityExt.Core {
             float t = GetClock();
             m_clock_delta_time = paused ? 0f : (t - m_clock_time);
             m_clock_time = t;
-            //If running start updating 'elapsed' past the delay
+            //If 'running' start updating 'elapsed' past the delay
             switch(state) {
                 case State.Running: {
                     //Update Elapsed
@@ -464,7 +483,7 @@ namespace UnityExt.Core {
         /// </summary>
         /// <returns></returns>
         protected override bool OnExecute() {                        
-            //If duration is '0.0' steps will never occur, otherwise elapsed>=duration
+            //If duration is '0.0' step counting will never occur, otherwise if elapsed>=duration its completed
             return duration<=0f ? true : (m_elapsed<duration);
         }
 
@@ -475,17 +494,19 @@ namespace UnityExt.Core {
         internal override bool CanCompleteInternal() {
             //Check if user event orders the completion
             bool v1 = InvokeEvent(m_on_step_event,this,true);
-            //If 'stop' return 'completed'
+            //If 'false' return 'completed'
             if(!v1) return true;
             //Increment step
             step++;                            
-            //If 'steps' reached 'count' complete and 'count>0' (can finish steps)
+            //If 'steps' reached 'count' and 'count>0' complete the timer.
             if(count>0)if(step>=count) { step=count-1; return true; }
-            //Reset elapsed with negative to enforce first step 'elapsed=0'
+            //Reset elapsed
             m_elapsed=0f;
             //Keep going
             return false;
         }
+
+        #endregion
 
         #region IProgressProvider
 
