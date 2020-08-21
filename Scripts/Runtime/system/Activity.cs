@@ -42,8 +42,8 @@ namespace UnityExt.Core.Sys {
         Async,
         /// <summary>
         /// Runs inside a thread, watch out to not use Unity API elements inside it.
-        /// </summary>
-        Thread,
+        /// </summary>        
+        Thread,        
         /// <summary>
         /// Runs the job passed as parameter in a loop and using schedule
         /// </summary>
@@ -198,26 +198,7 @@ namespace UnityExt.Core.Sys {
         /// </summary>
         static public int maxThreadCount = Mathf.Max(2,Mathf.Min(Environment.ProcessorCount,6));
 
-        #region CRUD
-
-        #region Create
-
-        /// <summary>
-        /// Auxiliary activity creation
-        /// </summary>
-        /// <param name="p_id"></param>
-        /// <param name="p_on_execute"></param>
-        /// <param name="p_on_complete"></param>
-        /// <param name="p_context"></param>
-        /// <returns></returns>
-        static internal Activity Create(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,ActivityContext p_context) {
-            Activity a = new Activity(p_id,p_context);
-            a.OnCompleteEvent = p_on_complete;
-            a.OnExecuteEvent  = p_on_execute;
-            return a;
-        }
-        
-        #endregion
+        #region Add/Remove/Find
 
         /// <summary>
         /// Adds any object implementing the interfaces for exection.
@@ -234,7 +215,7 @@ namespace UnityExt.Core.Sys {
         /// <summary>
         /// Removes all activities and interfaces from exection.
         /// </summary>
-        static public void Clear() { if(m_manager)m_manager.handler.Clear(); }
+        static public void Kill() { if(m_manager)m_manager.handler.Clear(); }
 
         /// <summary>
         /// Searches for a single activity by id and context.
@@ -251,7 +232,7 @@ namespace UnityExt.Core.Sys {
         /// <param name="p_id">Activity id to search.</param>        
         /// <typeparam name="T">Activity derived type.</typeparam>
         /// <returns>Activity found or null</returns>
-        static public T Find<T>(string p_id) where T : Activity { return Find<T>(p_id,(ActivityContext)(-1)); }
+        static public T Find<T>(string p_id) where T : Activity { return Find<T>(p_id,ActivityContext.All); }
 
         /// <summary>
         /// Searches for all activities matching the id and context.
@@ -283,14 +264,22 @@ namespace UnityExt.Core.Sys {
         /// </summary>
         /// <typeparam name="T">Activity derived type.</typeparam>
         /// <returns>List of results or empty list.</returns>
-        static public List<T> FindAll<T>() where T : Activity { return FindAll<T>("",(ActivityContext)(-1)); }
+        static public List<T> FindAll<T>() where T : Activity { return FindAll<T>("",ActivityContext.All); }
 
         #endregion
 
-        #region Run / Loop
+        #region Run/Loop
 
-        #region Activity
-
+        /// <summary>
+        /// Helper
+        /// </summary>        
+        static internal Activity Create(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,ActivityContext p_context) {
+            Activity n = new Activity(p_id,p_context);
+            n.OnCompleteEvent = p_on_complete;
+            n.OnExecuteEvent  = p_on_execute;
+            return n;
+        }
+        
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
         /// </summary>
@@ -298,39 +287,15 @@ namespace UnityExt.Core.Sys {
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
         /// <param name="p_context">Execution context to run.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Predicate<Activity> p_callback,ActivityContext p_context) { Activity a = Create(p_id,p_callback,null,p_context); a.Start(); return a; }
+        static public Activity Run(string p_id,System.Predicate<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create(p_id,p_callback,null,p_context); a.Start(); return a; }
             
         /// <summary>
         /// Creates and starts an activity for constant loop execution.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching.</param>
+        /// </summary>        
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
         /// <param name="p_context">Execution context to run.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(System.Predicate<Activity> p_callback,ActivityContext p_context) { Activity a = Create("",p_callback,null,p_context); a.Start(); return a; }
-
-        /// <summary>
-        /// Creates and starts an activity for constant loop execution.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
-        /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Predicate<Activity> p_callback) { Activity a = Create(p_id,p_callback,null,ActivityContext.Update); a.Start(); return a; }
-
-        /// <summary>
-        /// Creates and starts an activity for constant loop execution.
-        /// </summary>
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
-        /// <returns>The running activity</returns>
-        static public Activity Run(System.Predicate<Activity> p_callback) { Activity a = Create("",p_callback,null,ActivityContext.Update); a.Start(); return a; }
-
-        #endregion
-
-        #endregion
-
-        #region Run / Once
-
-        #region Activity
+        static public Activity Run(System.Predicate<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create("",p_callback,null,p_context); a.Start(); return a; }
 
         /// <summary>
         /// Creates and start a single execution activity.
@@ -339,32 +304,15 @@ namespace UnityExt.Core.Sys {
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <param name="p_context">Execution context.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Action<Activity> p_callback,ActivityContext p_context) { Activity a = Create(p_id,null,p_callback,p_context); a.Start(); return a; }
-            
-        /// <summary>
-        /// Creates and start a single execution activity.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Action<Activity> p_callback) { Activity a = Create(p_id,null,p_callback,ActivityContext.Update); a.Start(); return a; }
-
+        static public Activity Run(string p_id,System.Action<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create(p_id,null,p_callback,p_context); a.Start(); return a; }
+        
         /// <summary>
         /// Creates and start a single execution activity.
         /// </summary>
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <param name="p_context">Execution context.</param>
         /// <returns>The running activity</returns>
-        static public Activity Run(System.Action<Activity> p_callback,ActivityContext p_context) { Activity a = Create("",null,p_callback,p_context); a.Start(); return a; }
-
-        /// <summary>
-        /// Creates and start a single execution activity.
-        /// </summary>
-        /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <returns>The running activity</returns>
-        static public Activity Run(System.Action<Activity> p_callback) { Activity a = Create("",null,p_callback,ActivityContext.Update); a.Start(); return a; }
-
-        #endregion
+        static public Activity Run(System.Action<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create("",null,p_callback,p_context); a.Start(); return a; }
 
         #endregion
 
@@ -434,7 +382,6 @@ namespace UnityExt.Core.Sys {
         internal Task m_task;
         internal int  m_yield_ms;
         internal CancellationTokenSource m_task_cancel;
-        internal bool Is<T>() where T : Activity { return this is T; }
         
         #region CTOR
 
@@ -615,7 +562,8 @@ namespace UnityExt.Core.Sys {
             m_task        = null;
             m_task_cancel = null;
             OnStop();
-        }        
+        } 
+        
         /// <summary>
         /// Handler for when this node is added in the manager.
         /// </summary>
@@ -732,7 +680,7 @@ namespace UnityExt.Core.Sys {
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
         /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
         /// <returns>The running activity</returns>
-        static public Activity<T> Run(string p_id,System.Predicate<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity(p_id,p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
+        static public Activity<T> Run(string p_id,System.Predicate<Activity> p_callback,bool p_async=true) { Activity a = CreateJobActivity(p_id,p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
 
         /// <summary>
         /// Creates and starts an Activity that executes the desired Unity job in a loop.
@@ -741,22 +689,7 @@ namespace UnityExt.Core.Sys {
         /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
         /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
         /// <returns></returns>
-        static public Activity<T> Run(System.Predicate<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity("",p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
-
-        /// <summary>
-        /// Creates and starts an Activity that executes the desired Unity job in a loop.
-        /// </summary>        
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>                
-        /// <returns>The running activity</returns>
-        new static public Activity<T> Run(string p_id,System.Predicate<Activity> p_callback) { Activity a = CreateJobActivity(p_id,p_callback,null,true); a.Start(); return (Activity<T>)a; }
-
-        /// <summary>
-        /// Creates and starts an Activity that executes the desired Unity job in a loop.
-        /// </summary>        
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>                
-        /// <returns>The running activity</returns>
-        new static public Activity<T> Run(System.Predicate<Activity> p_callback) { Activity a = CreateJobActivity("",p_callback,null,true); a.Start(); return (Activity<T>)a; }
+        static public Activity<T> Run(System.Predicate<Activity> p_callback,bool p_async=true) { Activity a = CreateJobActivity("",p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
 
         #endregion
 
@@ -769,15 +702,7 @@ namespace UnityExt.Core.Sys {
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
         /// <returns>The running activity</returns>
-        static public Activity<T> Run(string p_id,System.Action<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity(p_id,null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
-
-        /// <summary>
-        /// Creates and start a single execution activity performing the specified unity job.
-        /// </summary>        
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the activity completion.</param>                
-        /// <returns>The running activity</returns>
-        new static public Activity<T> Run(string p_id,System.Action<Activity> p_callback) { Activity a = CreateJobActivity(p_id,null,p_callback,true); a.Start(); return (Activity<T>)a; }
+        static public Activity<T> Run(string p_id,System.Action<Activity> p_callback=null,bool p_async=true) { Activity a = CreateJobActivity(p_id,null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
 
         /// <summary>
         /// Creates and start a single execution activity performing the specified unity job.
@@ -785,14 +710,7 @@ namespace UnityExt.Core.Sys {
         /// <param name="p_callback">Callback for handling the activity completion.</param>        
         /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
         /// <returns>The running activity</returns>
-        static public Activity<T> Run(System.Action<Activity> p_callback,bool p_async) { Activity a = CreateJobActivity("",null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
-
-        /// <summary>
-        /// Creates and start a single execution activity performing the specified unity job.
-        /// </summary>        
-        /// <param name="p_callback">Callback for handling the activity completion.</param>                
-        /// <returns>The running activity</returns>
-        new static public Activity<T> Run(System.Action<Activity> p_callback) { Activity a = CreateJobActivity("",null,p_callback,true); a.Start(); return (Activity<T>)a; }
+        static public Activity<T> Run(System.Action<Activity> p_callback=null,bool p_async=true) { Activity a = CreateJobActivity("",null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
 
         #endregion
 
@@ -1072,6 +990,6 @@ namespace UnityExt.Core.Sys {
 
     }
 
-#endregion
+    #endregion
 
 }

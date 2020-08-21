@@ -56,7 +56,7 @@ namespace UnityExt.Core.Motion {
         /// <returns>Tween found or null</returns>        
         static public Tween Find(string p_id,ActivityContext p_context = DefaultContext) { return (Tween)Activity.Find<Tween>(p_id,p_context); }
 
-        #region FindAll
+        #region Find
 
         /// <summary>
         /// Searches all tweens matching the search criteria.
@@ -179,6 +179,147 @@ namespace UnityExt.Core.Motion {
         static internal void ClearAll(List<Tween> p_list) { for(int i=0;i<p_list.Count;i++) p_list[i].Stop(); }
 
         #endregion
+        /*
+        #region Run/Loop
+
+        /// <summary>
+        /// Helper
+        /// </summary>        
+        static internal Tween<T> Create<T>(string p_id,object p_target,string p_property,T p_from,T p_to,bool p_has_from,float p_duration,int p_count,object p_easing,TweenWrap p_wrap,System.Predicate<Timer> p_on_execute,System.Action<Timer> p_on_complete,System.Predicate<Timer> p_on_step) {
+            Tween<T> n = new Tween<T>(p_id,p_duration,p_count);
+            n.CreateTween(p_target,p_property,p_from,p_to,p_has_from,p_easing,p_wrap);
+            n.OnCompleteEvent = p_on_complete;
+            n.OnExecuteEvent  = p_on_execute;
+            n.OnStepEvent     = p_on_step;            
+            return n;
+        }
+
+        #region Run
+
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,int p_count=1,Func<float,float> p_easing=null,TweenWrap p_wrap = TweenWrap.Clamp,System.Predicate<Tween> p_callback=null) { Tween n = Create<T>(p_id,); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for each execution.</param>        
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(string p_id,System.Predicate<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                  { Timer n = Create(p_id,p_type,p_callback,null,null,0f,        p_count); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(System.Predicate<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)             { Timer n = Create("",  p_type,p_callback,null,null,p_duration,p_count); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_callback">Handler for each execution.</param>        
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(System.Predicate<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                              { Timer n = Create("",  p_type,p_callback,null,null,0f,        p_count); n.Start(); return n; }
+
+        #endregion
+
+        #region RunOnce
+
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for completion.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs for a frame.</param>
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(string p_id,System.Action<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_type,null,p_callback,null,Mathf.Max(p_duration,0.0001f),Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for completion.</param>        
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(string p_id,System.Action<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                  { Timer n = Create(p_id,p_type,null,p_callback,null,0.0001f,                      Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>        
+        /// <param name="p_callback">Handler for completion.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs for a frame.</param>
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(System.Action<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)             { Timer n = Create("",  p_type,null,p_callback,null,Mathf.Max(p_duration,0.0001f),Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>        
+        /// <param name="p_callback">Handler for completion.</param>        
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(System.Action<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                              { Timer n = Create("",  p_type,null,p_callback,null,0.0001f,                      Mathf.Max(1,p_count)); n.Start(); return n; }
+        
+        #endregion
+
+        #region Step
+
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs per frame.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(string p_id,System.Predicate<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)  { Timer n = Create(p_id,p_type,null,null,p_callback,Mathf.Max(p_duration,0.0001f),p_count); n.Start(); return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for each execution.</param>        
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(string p_id,System.Predicate<Activity> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                { Timer n = Create(p_id,p_type,null,null,p_callback,0.0001f,                      p_count); n.Start(); return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs per frame.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(System.Predicate<Activity> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)           { Timer n = Create("",  p_type,null,null,p_callback,Mathf.Max(p_duration,0.0001f),p_count); n.Start(); return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_callback">Handler for each execution.</param>        
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(System.Predicate<Activity> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                            { Timer n = Create("",  p_type,null,null,p_callback,0.0001f,                      p_count); n.Start(); return n; }
+
+        #endregion
+
+        #endregion
+
+        //*/
 
         #endregion
 
@@ -373,6 +514,11 @@ namespace UnityExt.Core.Motion {
         public Tween(            object p_target,string p_property,         T p_to,                                  Func<float,float> p_easing=null) : base("",DefaultDuration,1)  { CreateTween(p_target,p_property,p_to,  p_to,false,p_easing,TweenWrap.Clamp); }
         public Tween(            object p_target,string p_property,         T p_to,float p_duration,                 AnimationCurve    p_easing=null) : base("",p_duration,1)       { CreateTween(p_target,p_property,p_to,  p_to,false,p_easing,TweenWrap.Clamp); }        
         public Tween(            object p_target,string p_property,         T p_to,                                  AnimationCurve    p_easing=null) : base("",DefaultDuration,1)  { CreateTween(p_target,p_property,p_to,  p_to,false,p_easing,TweenWrap.Clamp); }
+        
+        /// <summary>
+        /// Helper
+        /// </summary>        
+        internal Tween(string p_id,float p_duration,int p_count) : base(p_id,p_duration,p_count) { }
 
         /// <summary>
         /// Creates the tween internal structure.

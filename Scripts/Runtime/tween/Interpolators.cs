@@ -216,7 +216,7 @@ namespace UnityExt.Core.Motion {
         /// </summary>
         public object target { 
             get { return m_target; } 
-            set { if(value!=m_target) AssertTarget(m_target,m_property); }
+            set { if(value!=m_target) AssertTarget(value,m_property); }
         }
         private object m_target;
 
@@ -225,7 +225,7 @@ namespace UnityExt.Core.Motion {
         /// </summary>
         public string property { 
             get { return m_property; } 
-            set { if(value!=m_property) AssertTarget(m_target,m_property); }
+            set { if(value!=m_property) AssertTarget(m_target,value); }
         }
         private string m_property;
         
@@ -308,9 +308,9 @@ namespace UnityExt.Core.Motion {
         /// <param name="p_property"></param>
         internal void AssertTarget(object p_target,string p_property) {
             m_target         = p_target;
-            m_property       = p_property;
-            isStatic         = m_target==null ? false : (target is Type);
-            isMaterial       = m_target==null ? false : (target is Material);
+            m_property       = p_property;            
+            isStatic         = m_target==null ? false : (m_target is Type);
+            isMaterial       = m_target==null ? false : (m_target is Material);
             //Init property state data
             m_target_property_accessor   = null;
             m_target_property_getter     = null;
@@ -323,11 +323,11 @@ namespace UnityExt.Core.Motion {
             //Skip empty property
             if(string.IsNullOrEmpty(m_property)) { return; }            
             //Set the flag if its an unity object to increase assertion.
-            isUnityObject = target is UnityEngine.Object;
+            isUnityObject = m_target is UnityEngine.Object;
             //Capture reflection info.            
             //If 'target' is a Material it needs special steps.
             if(isMaterial) {
-                Material mt = target as Material;
+                Material mt = m_target as Material;
                 //Assert if shader exists
                 if(mt.shader==null) { Debug.LogWarning($"Interpolator> Material [{mt.name}] does not contain a shader."); return; }
                 //Assert if property exists
@@ -338,28 +338,45 @@ namespace UnityExt.Core.Motion {
                 isValid = true;
                 //Skip the System.Reflection search phase
                 return;
-            }                
-            Type target_type = isStatic ? ((Type)target) : target.GetType();
+            }                  
+            Type   target_type = isStatic ? ((Type)m_target) : m_target.GetType();
             //Fetch field info
-            MemberInfo[] mi = target_type.GetMember(property,BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.GetField | BindingFlags.GetProperty | BindingFlags.SetProperty);
+            MemberInfo[] mi = target_type==null ? null : target_type.GetMember(property,BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.GetField | BindingFlags.GetProperty | BindingFlags.SetProperty);
             //Assert if property exists
-            if(mi.Length<=0) { Debug.LogWarning($"Interpolator> Failed to find{(isStatic ? "static" : "")} property [{property}] of [{target_type.FullName}]"); return; }
+            bool is_mi_valid = mi==null ? false : mi.Length>0;            
+            if(!is_mi_valid) { Debug.LogWarning($"Interpolator> Failed to find {(isStatic ? "static " : "")}property [{property}] of [{target_type.FullName}]"); return; }            
             //Store property accessor
             m_target_property_accessor = mi[0];
             //If property generate specific delegates to speedup the property manipulation
             if(m_target_property_accessor.MemberType == MemberTypes.Property) {
                 Type   delegate_type = null;
-                object invoker       = isStatic ? null : target;
-                PropertyInfo pi   = (PropertyInfo)m_target_property_accessor;
+                object invoker       = isStatic ? null : m_target;
+                PropertyInfo pi   = (PropertyInfo)m_target_property_accessor;                
                 Type         pi_t = pi.PropertyType;                                
-                //if(pi.PropertyType == typeof(Vector2)) fni.CreateDelegate(typeof(Vector2Getter),invoker);
+                MethodInfo   fni  = null;
+                //if(pi.PropertyType == typeof(Vector2)) fni.CreateDelegate(typeof(Vector2Getter),invoker);                
+
+                fni = pi.GetGetMethod();
                 delegate_type = m_type_getter_delegate_lut.ContainsKey(pi_t) ? m_type_getter_delegate_lut[pi_t] : null;
-                m_target_property_getter = delegate_type==null ? null : pi.GetGetMethod().CreateDelegate(delegate_type,invoker);
+                m_target_property_getter = delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));
+                
+                fni = pi.GetSetMethod();
                 delegate_type = m_type_setter_delegate_lut.ContainsKey(pi_t) ? m_type_setter_delegate_lut[pi_t] : null;
-                m_target_property_setter = delegate_type==null ? null : pi.GetSetMethod().CreateDelegate(delegate_type,invoker);
+                m_target_property_setter = delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));
+
+            }
+            isValid = m_target_property_getter==null ? false : (m_target_property_setter==null ? false : true);            
+            if(!isValid) {
+                string log = $"Interpolator> Failed to fetch get/set methods from {(isStatic ? "static " : "")}property [{property}] of [{target_type.FullName}]";
+                #if ENABLE_IL2CPP
+                log += ". IL2CPP Might have Stripped this property/field.";
+                #endif
+                Debug.LogWarning(log);
+                return;
             }
             //Set valid
             isValid = true;
+            
         }
 
         #endregion

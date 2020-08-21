@@ -430,13 +430,14 @@ namespace UnityExt.Core.Sys {
                 if(a.state==ActivityState.Running) { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already running.");*/ return; }
                 if(a.state==ActivityState.Queued)  { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already queued.");*/  return; }
                 a.state = ActivityState.Queued;
-                switch(a.context) {
+                switch(a.context) {                    
                     case ActivityContext.Job:
                     case ActivityContext.JobAsync:
                     case ActivityContext.Update:      if(!lu.la.Contains(a))  lu.la.Add(a);  break;
                     case ActivityContext.LateUpdate:  if(!llu.la.Contains(a)) llu.la.Add(a); break;
                     case ActivityContext.FixedUpdate: if(!lfu.la.Contains(a)) lfu.la.Add(a); break;
                     case ActivityContext.Async:       if(!lau.la.Contains(a)) lau.la.Add(a); break;
+                    #if !UNITY_WEBGL
                     //Threaded lists its better to enqueue in a secondary list and let the main execution add the list in a synced way
                     case ActivityContext.Thread:    {       
                         //Safely add to queue
@@ -445,6 +446,9 @@ namespace UnityExt.Core.Sys {
                         AssertThread(); 
                         break; 
                     }
+                    #else
+                    case ActivityContext.Thread:     if(!lt[0].la.Contains(a))  lt[0].la.Add(a);  break;
+                    #endif
                 }
                 //Call added handler.
                 a.OnManagerAddInternal();
@@ -469,6 +473,7 @@ namespace UnityExt.Core.Sys {
                     case ActivityContext.FixedUpdate: if(lfu.la.Contains(a)) lfu.la.Remove(a); break;
                     case ActivityContext.Async:       if(lau.la.Contains(a)) lau.la.Remove(a); break;
                     //Threaded lists its better to null the element and allow removal during the synced execution of the thread
+                    #if !UNITY_WEBGL
                     case ActivityContext.Thread: { 
                         //Search for the activity and null it for next pruning
                         for(int i=0;i<lt.Length;i++) if(lt[i].SafeInvalidate(a)) break;             
@@ -476,6 +481,9 @@ namespace UnityExt.Core.Sys {
                         SafeInvalidate(ltq_a,a);                        
                     }
                     break;
+                    #else
+                    case ActivityContext.Thread:     if(lt[0].la.Contains(a))  lt[0].la.Remove(a);  break;
+                    #endif
                 }
                 a.OnManagerRemoveInternal();
             }
@@ -490,6 +498,7 @@ namespace UnityExt.Core.Sys {
                 if(p_interface is ILateUpdateable)  { ILateUpdateable itf = (ILateUpdateable)  p_interface; if(!llu.li.Contains(itf)) llu.li.Add(itf); }
                 if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable)p_interface; if(!lfu.li.Contains(itf)) lfu.li.Add(itf); }
                 if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable)p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
+                #if !UNITY_WEBGL
                 if(p_interface is IThreadUpdateable) {
                     IThreadUpdateable itf = (IThreadUpdateable)p_interface;                    
                     //Safely add the element
@@ -497,6 +506,9 @@ namespace UnityExt.Core.Sys {
                     //Assert for thread creation
                     AssertThread();
                 }
+                #else
+                if(p_interface is IThreadUpdateable) { IThreadUpdateable itf = (IThreadUpdateable) p_interface; if(!lt[0].li.Contains(itf))  lt[0].li.Add(itf);  }
+                #endif
             }
 
             /// <summary>
@@ -505,10 +517,11 @@ namespace UnityExt.Core.Sys {
             /// <param name="p_interface"></param>
             public void RemoveInterface(object p_interface) {
                 if(p_interface==null) return;
-                if(p_interface is IUpdateable)      { IUpdateable      itf = (IUpdateable)      p_interface; if(!lu.li.Contains(itf))  lu.li.Add(itf);  }
-                if(p_interface is ILateUpdateable)  { ILateUpdateable  itf = (ILateUpdateable)  p_interface; if(!llu.li.Contains(itf)) llu.li.Add(itf); }
-                if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable) p_interface; if(!lfu.li.Contains(itf)) lfu.li.Add(itf); }
-                if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable) p_interface; if(!lau.li.Contains(itf)) lau.li.Add(itf); }
+                if(p_interface is IUpdateable)      { IUpdateable      itf = (IUpdateable)      p_interface; if(lu.li.Contains(itf))  lu.li.Remove(itf);  }
+                if(p_interface is ILateUpdateable)  { ILateUpdateable  itf = (ILateUpdateable)  p_interface; if(llu.li.Contains(itf)) llu.li.Remove(itf); }
+                if(p_interface is IFixedUpdateable) { IFixedUpdateable itf = (IFixedUpdateable) p_interface; if(lfu.li.Contains(itf)) lfu.li.Remove(itf); }
+                if(p_interface is IAsyncUpdateable) { IAsyncUpdateable itf = (IAsyncUpdateable) p_interface; if(lau.li.Contains(itf)) lau.li.Remove(itf); }
+                #if !UNITY_WEBGL
                 if(p_interface is IThreadUpdateable) {
                     IThreadUpdateable itf = (IThreadUpdateable)p_interface;
                     //Search for the interface and null it for next pruning
@@ -519,6 +532,9 @@ namespace UnityExt.Core.Sys {
                     //Also clear in queue
                     SafeInvalidate(ltq_i,itf);                    
                 }
+                #else
+                if(p_interface is IThreadUpdateable) { IThreadUpdateable itf = (IThreadUpdateable) p_interface; if(lt[0].li.Contains(itf))  lt[0].li.Remove(itf);  }
+                #endif
             }
 
             #endregion
@@ -638,7 +654,6 @@ namespace UnityExt.Core.Sys {
             internal SCG.List<T> FindAllByQuery<T>(SCG.List<Activity> l,string p_id) where T : Activity { SCG.List<T> res = new SCG.List<T>(); for(int i=0;i<l.Count;i++) if(QueryMatch<T>(l[i],p_id)) { res.Add((T)l[i]); } return res; }
             #endregion
 
-
             #endregion
 
             #region Loops
@@ -646,10 +661,15 @@ namespace UnityExt.Core.Sys {
             /// <summary>
             /// Assert all threads.
             /// </summary>
-            protected void AssertThread() {                 
+            protected void AssertThread() {           
+                #if UNITY_WEBGL
+                //Don't use threads in WebGL
+                return;
+                #else
                 //Assert threads a bit per frame
                 AssertThread(thread_assert_target);
                 thread_assert_target = (thread_assert_target+1)%lt.Length;
+                #endif
             }
 
             /// <summary>
@@ -718,9 +738,17 @@ namespace UnityExt.Core.Sys {
             public void Update() {
                 lu.Execute();
                 lau.Execute();
+
+                #if UNITY_WEBGL
+                //Thread execution is skipped and fallback into 'Update'
+                lt[0].Execute();
+                #endif
+
+                #if !UNITY_WEBGL
                 //Check health state of threading each 0.1s
                 if(thread_keep_alive_tick<=0) { AssertThread(); thread_keep_alive_tick=0.1f; }
                 thread_keep_alive_tick-=Time.unscaledDeltaTime;
+                #endif                
             }
 
             /// <summary>

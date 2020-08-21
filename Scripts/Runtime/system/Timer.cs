@@ -19,7 +19,13 @@ namespace UnityExt.Core.Sys {
         /// <summary>
         /// Runs using a stopwatch class and track time out if the main thread.
         /// </summary>
-        System            
+        System,
+        #if UNITY_EDITOR
+        /// <summary>
+        /// Flag that tells the timer uses Editor only time tracking.
+        /// </summary>
+        Editor=255
+        #endif
     }
 
     #endregion
@@ -150,13 +156,137 @@ namespace UnityExt.Core.Sys {
         }
         
         #endregion
+        /*
+        #region Run/Loop
 
+        /// <summary>
+        /// Helper
+        /// </summary>        
+        static internal Timer Create(string p_id,float p_duration,int p_count,TimerType p_type,System.Predicate<Timer> p_on_execute,System.Action<Timer> p_on_complete,System.Predicate<Timer> p_on_step) {
+            Timer n = new Timer(p_id,p_type);
+            n.duration = p_duration;
+            n.count    = p_count;
+            n.OnCompleteEvent = p_on_complete;
+            n.OnExecuteEvent  = p_on_execute;
+            n.OnStepEvent     = p_on_step;            
+            return n;
+        }
+
+        #region Run
+        
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before starting in seconds.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(string p_id,float p_delay,float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,p_count,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        static public Timer Run(string p_id,float p_delay,float p_duration,            System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        static public Timer Run(string p_id,float p_delay,                             System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,0f        ,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        static public Timer Run(string p_id,              float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,p_count,p_type,p_callback,null,null); n.Start();        return n; }        
+        static public Timer Run(string p_id,                                           System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,0f        ,1      ,p_type,p_callback,null,null); n.Start();        return n; }
+        static public Timer Run(            float p_delay,float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,p_count,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        static public Timer Run(            float p_delay,float p_duration,            System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        static public Timer Run(            float p_delay,                             System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,0f        ,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        static public Timer Run(                          float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,p_count,p_type,p_callback,null,null); n.Start();        return n; }        
+        static public Timer Run(                                                       System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,0f        ,1      ,p_type,p_callback,null,null); n.Start();        return n; }
+        
+        #endregion
+
+        #region RunOnce
+
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for completion.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs for a frame.</param>
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(string p_id,System.Action<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_type,null,p_callback,null,Mathf.Max(p_duration,0.0001f),Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for completion.</param>        
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(string p_id,System.Action<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                  { Timer n = Create(p_id,p_type,null,p_callback,null,0.0001f,                      Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>        
+        /// <param name="p_callback">Handler for completion.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs for a frame.</param>
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(System.Action<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)             { Timer n = Create("",  p_type,null,p_callback,null,Mathf.Max(p_duration,0.0001f),Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// </summary>        
+        /// <param name="p_callback">Handler for completion.</param>        
+        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Run(System.Action<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                              { Timer n = Create("",  p_type,null,p_callback,null,0.0001f,                      Mathf.Max(1,p_count)); n.Start(); return n; }
+        
+        #endregion
+
+        #region Step
+
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs per frame.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(string p_id,System.Predicate<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)  { Timer n = Create(p_id,p_type,null,null,p_callback,Mathf.Max(p_duration,0.0001f),p_count); n.Start(); return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for each execution.</param>        
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(string p_id,System.Predicate<Activity> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                { Timer n = Create(p_id,p_type,null,null,p_callback,0.0001f,                      p_count); n.Start(); return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs per frame.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(System.Predicate<Activity> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)           { Timer n = Create("",  p_type,null,null,p_callback,Mathf.Max(p_duration,0.0001f),p_count); n.Start(); return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_callback">Handler for each execution.</param>        
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
+        static public Timer Step(System.Predicate<Activity> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                            { Timer n = Create("",  p_type,null,null,p_callback,0.0001f,                      p_count); n.Start(); return n; }
+
+        #endregion
+        
+        #endregion
+        //*/
         #endregion
 
         /// <summary>
         /// Timer clock type.
         /// </summary>
-        public TimerType type { get; internal set; }
+        public TimerType type { get; set; }
 
         /// <summary>
         /// Number of loop steps to perform, if '0' runs undefinetely.
@@ -214,7 +344,6 @@ namespace UnityExt.Core.Sys {
         /// Speed adjustment for other features.
         /// </summary>
         internal float m_speed_internal = 1f;
-
 
         #region Events
 
@@ -314,9 +443,12 @@ namespace UnityExt.Core.Sys {
             m_clock_time = 0f;
             m_elapsed    = 0f;
             switch(type) {
+                #if UNITY_EDITOR
+                case TimerType.Editor:
+                #endif
                 case TimerType.Unity: {
                     if(context == ActivityContext.Thread) {
-                        Debug.LogWarning("Timer> Using Unity.Tiem in Thread context will throw an error. Fallback to 'System'");
+                        Debug.LogWarning("Timer> Using Unity based Time in Thread context will throw an error. Fallback to 'System'");
                         type = TimerType.System;
                     }                    
                 }
@@ -392,13 +524,16 @@ namespace UnityExt.Core.Sys {
                 case TimerType.Unity:  { 
                     //Time.unscaledTime isn't affected by editor's pause/step
                     float ivts = Time.timeScale<=0f ? 1f : (1f/Time.timeScale);
-                    t = Time.time * (unscaled ? ivts : 1f); 
-                    #if UNITY_EDITOR
-                    //If creating the timer in editor, use this variable
-                    t = (float)UnityEditor.EditorApplication.timeSinceStartup;
-                    #endif
+                    t = Time.time * (unscaled ? ivts : 1f);
                 }
-                break; 
+                break;
+                #if UNITY_EDITOR
+                case TimerType.Editor: {
+                    //If creating the timer for inspectors, window, menus,...
+                    t = (float)UnityEditor.EditorApplication.timeSinceStartup;
+                }
+                break;
+                #endif
                 case TimerType.System: { double ms = (double)m_clock_sys.ElapsedMilliseconds; t = (float)(ms*0.001); } break;
             }            
             return t - m_clock_stamp;
@@ -477,7 +612,10 @@ namespace UnityExt.Core.Sys {
                 case ActivityState.Running: {
                     float dt = m_clock_delta_time;
                     //TODO: Study applying dt = reverse ? -dt : dt
-                    //Elapsed can be negative and when smaller than -duration step decreases
+                    //Delay lasts the same
+                    //Elapsed<=0 == Step--
+                    //Elapsed>=duration == Step++
+                    //Elapsed always >=0
                     //Update Elapsed
                     m_elapsed += dt;                    
                     //Fix elapsed against duration and 0
