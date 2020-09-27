@@ -12,7 +12,7 @@ using System.Reflection;
 using UnityEditor;
 #endif
 
-namespace UnityExt.Core.Sys {
+namespace UnityExt.Core {
 
     #region enum ActivityContext
 

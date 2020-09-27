@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
-namespace UnityExt.Core.Sys {
+namespace UnityExt.Core {
 
     #region enum TimerType
 

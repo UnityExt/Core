@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace UnityExt.Core.Sys {
+namespace UnityExt.Core {
 
     /// <summary>
     /// Component that extends a Monobehaviour so it can execute inside the activity manager context instead of the slow unity loop.

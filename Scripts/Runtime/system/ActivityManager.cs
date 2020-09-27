@@ -5,7 +5,7 @@ using SCG = System.Collections.Generic;
 using System.Threading;
 using System;
 
-namespace UnityExt.Core.Sys {
+namespace UnityExt.Core {
 
     /// <summary>
     /// Class that implements the management of a set of interfaces and activities.

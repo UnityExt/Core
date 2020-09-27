@@ -3,9 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
-using UnityExt.Core.Sys;
 
-namespace UnityExt.Core.Motion {
+namespace UnityExt.Core {
 
     #region class Interpolator
 

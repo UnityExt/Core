@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace UnityExt.Core.Sys {
+namespace UnityExt.Core {
 
     /// <summary>
     /// Interfaces for objects that wants to perform update loops.
