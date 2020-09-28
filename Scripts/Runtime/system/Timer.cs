@@ -156,7 +156,7 @@ namespace UnityExt.Core {
         }
         
         #endregion
-        /*
+        
         #region Run/Loop
 
         /// <summary>
@@ -185,102 +185,209 @@ namespace UnityExt.Core {
         /// <param name="p_type">Timer type.</param>
         /// <returns>Timer instance, already running.</returns>
         static public Timer Run(string p_id,float p_delay,float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,p_count,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before starting in seconds.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>        
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(string p_id,float p_delay,float p_duration,            System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before starting in seconds.</param>        
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(string p_id,float p_delay,                             System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,0f        ,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>        
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(string p_id,              float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,p_count,p_type,p_callback,null,null); n.Start();        return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(string p_id,                                           System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,0f        ,1      ,p_type,p_callback,null,null); n.Start();        return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_delay">Delay before starting in seconds.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(            float p_delay,float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,p_count,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_delay">Delay before starting in seconds.</param>
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>        
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(            float p_delay,float p_duration,            System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_delay">Delay before starting in seconds.</param>        
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(            float p_delay,                             System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,0f        ,1      ,p_type,p_callback,null,null); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_duration">Duration of the Timer, if 0.0 runs forever.</param>
+        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(                          float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,p_count,p_type,p_callback,null,null); n.Start();        return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_callback">Handler for each execution.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance, already running.</returns>
         static public Timer Run(                                                       System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,0f        ,1      ,p_type,p_callback,null,null); n.Start();        return n; }
         
         #endregion
 
         #region RunOnce
-
+        
         /// <summary>
-        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// Creates and executes a Timer with a single execution callback upon completion. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
         /// </summary>
-        /// <param name="p_id">Timer Id</param>
-        /// <param name="p_callback">Handler for completion.</param>
-        /// <param name="p_duration">Duration of the Timer, if 0.0 runs for a frame.</param>
-        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_id">Timer Id.</param>
+        /// <param name="p_duration">Duration before completion.</param>
+        /// <param name="p_callback">Callback called after completion.</param>
         /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Run(string p_id,System.Action<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_type,null,p_callback,null,Mathf.Max(p_duration,0.0001f),Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Run(string p_id,              float p_duration,System.Action<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,1,p_type,null,p_callback,null); n.Start();        return n; }                
         /// <summary>
-        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
-        /// </summary>
-        /// <param name="p_id">Timer Id</param>
-        /// <param name="p_callback">Handler for completion.</param>        
-        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
-        /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Run(string p_id,System.Action<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                  { Timer n = Create(p_id,p_type,null,p_callback,null,0.0001f,                      Mathf.Max(1,p_count)); n.Start(); return n; }
-        /// <summary>
-        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
+        /// Creates and executes a Timer with a single execution callback upon completion. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
         /// </summary>        
-        /// <param name="p_callback">Handler for completion.</param>
-        /// <param name="p_duration">Duration of the Timer, if 0.0 runs for a frame.</param>
-        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
+        /// <param name="p_duration">Duration before completion.</param>
+        /// <param name="p_callback">Callback called after completion.</param>
         /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Run(System.Action<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)             { Timer n = Create("",  p_type,null,p_callback,null,Mathf.Max(p_duration,0.0001f),Mathf.Max(1,p_count)); n.Start(); return n; }
-        /// <summary>
-        /// Creates and executes a Timer with a once upon completion callback. If no 'duration' is specified the Timer runs for a single frame, if no 'count' is specified the Timer runs for single step.
-        /// </summary>        
-        /// <param name="p_callback">Handler for completion.</param>        
-        /// <param name="p_count">Number of steps, will be forced to >=1.</param>
-        /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Run(System.Action<Timer> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                              { Timer n = Create("",  p_type,null,p_callback,null,0.0001f,                      Mathf.Max(1,p_count)); n.Start(); return n; }
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Run(                          float p_duration,System.Action<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,1,p_type,null,p_callback,null); n.Start();        return n; }                
         
         #endregion
 
         #region Step
 
         /// <summary>
-        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
         /// </summary>
         /// <param name="p_id">Timer Id</param>
-        /// <param name="p_callback">Handler for each execution.</param>
-        /// <param name="p_duration">Duration of the Timer, if 0.0 runs per frame.</param>
-        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_delay">Delay before running.</param>
+        /// <param name="p_duration">Step duration.</param>
+        /// <param name="p_count">Number of steps</param>
+        /// <param name="p_callback">Callback called per step.</param>
         /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Step(string p_id,System.Predicate<Timer> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)  { Timer n = Create(p_id,p_type,null,null,p_callback,Mathf.Max(p_duration,0.0001f),p_count); n.Start(); return n; }        
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(string p_id,float p_delay,float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,p_count,p_type,null,null,p_callback); n.Start(p_delay); return n; }
         /// <summary>
-        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
         /// </summary>
         /// <param name="p_id">Timer Id</param>
-        /// <param name="p_callback">Handler for each execution.</param>        
-        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// <param name="p_delay">Delay before running.</param>
+        /// <param name="p_duration">Step duration.</param>        
+        /// <param name="p_callback">Callback called per step.</param>
         /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Step(string p_id,System.Predicate<Activity> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                { Timer n = Create(p_id,p_type,null,null,p_callback,0.0001f,                      p_count); n.Start(); return n; }        
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(string p_id,float p_delay,float p_duration,            System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,1      ,p_type,null,null,p_callback); n.Start(p_delay); return n; }
         /// <summary>
-        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
-        /// </summary>        
-        /// <param name="p_callback">Handler for each execution.</param>
-        /// <param name="p_duration">Duration of the Timer, if 0.0 runs per frame.</param>
-        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before running.</param>        
+        /// <param name="p_callback">Callback called per step.</param>
         /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Step(System.Predicate<Activity> p_callback,float p_duration,int p_count=1,TimerType p_type = TimerType.Unity)           { Timer n = Create("",  p_type,null,null,p_callback,Mathf.Max(p_duration,0.0001f),p_count); n.Start(); return n; }        
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(string p_id,float p_delay,                             System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,0f        ,1      ,p_type,null,null,p_callback); n.Start(p_delay); return n; }
         /// <summary>
-        /// Creates and executes a Timer with a per-step callback. If no 'duration' is specified the Timer should run one step per frame, if no 'count' is specified the Timer loops 'duration' forever.
-        /// </summary>        
-        /// <param name="p_callback">Handler for each execution.</param>        
-        /// <param name="p_count">Number of steps, if 0 repeats 'duration' forever.</param>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>        
+        /// <param name="p_duration">Step duration.</param>
+        /// <param name="p_count">Number of steps</param>
+        /// <param name="p_callback">Callback called per step.</param>
         /// <param name="p_type">Timer type.</param>
-        /// <returns>Timer instance, already running.</returns>
-        static public Timer Step(System.Predicate<Activity> p_callback,int p_count=1,TimerType p_type = TimerType.Unity)                            { Timer n = Create("",  p_type,null,null,p_callback,0.0001f,                      p_count); n.Start(); return n; }
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(string p_id,              float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,p_duration,p_count,p_type,null,null,p_callback); n.Start();        return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_callback">Callback called per step.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(string p_id,                                           System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(p_id,0f        ,1      ,p_type,null,null,p_callback); n.Start();        return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_delay">Delay before running.</param>
+        /// <param name="p_duration">Step duration.</param>
+        /// <param name="p_count">Number of steps</param>
+        /// <param name="p_callback">Callback called per step.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(            float p_delay,float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,p_count,p_type,null,null,p_callback); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_delay">Delay before running.</param>
+        /// <param name="p_duration">Step duration.</param>        
+        /// <param name="p_callback">Callback called per step.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(            float p_delay,float p_duration,            System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,1      ,p_type,null,null,p_callback); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>        
+        /// <param name="p_delay">Delay before running.</param>
+        /// <param name="p_callback">Callback called per step.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(            float p_delay,                             System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,0f        ,1      ,p_type,null,null,p_callback); n.Start(p_delay); return n; }
+        /// <summary>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_duration">Step duration.</param>
+        /// <param name="p_count">Number of steps</param>
+        /// <param name="p_callback">Callback called per step.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(                          float p_duration,int p_count,System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,p_duration,p_count,p_type,null,null,p_callback); n.Start();        return n; }        
+        /// <summary>
+        /// Creates and executes a Timer with a per-loop-step callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
+        /// </summary>
+        /// <param name="p_callback">Callback called per step.</param>
+        /// <param name="p_type">Timer type.</param>
+        /// <returns>Timer instance already running.</returns>
+        static public Timer Step(                                                       System.Predicate<Timer> p_callback=null,TimerType p_type = TimerType.Unity) { Timer n = Create(""  ,0f        ,1      ,p_type,null,null,p_callback); n.Start();        return n; }
 
         #endregion
         
         #endregion
-        //*/
+        
         #endregion
 
         /// <summary>
@@ -382,7 +489,7 @@ namespace UnityExt.Core {
         override internal bool InvokeEvent(Delegate p_event,Activity p_arg,bool p_default) {
             bool res = p_default;
             if(p_event==null) return res;
-            if(p_event is Action<Timer>)    { Action<Timer>    cb = (Action<Timer>)p_event;          cb(this); } else
+            if(p_event is Action<Timer>)    { Action<Timer>    cb = (Action<Timer>)   p_event;       cb(this); } else
             if(p_event is Predicate<Timer>) { Predicate<Timer> cb = (Predicate<Timer>)p_event; res = cb(this); }
             return res;
         }

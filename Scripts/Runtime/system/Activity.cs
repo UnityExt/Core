@@ -92,21 +92,7 @@ namespace UnityExt.Core {
     /// </summary>
     public class Activity : INotifyCompletion, IStatusProvider, IProgressProvider {
 
-        #region class Manager
-
-        #if UNITY_EDITOR
-        [MenuItem("UnityExt/Debug/Activity/Test Activity")]
-        static protected void TestActivity() {
-            float t = (float)UnityEditor.EditorApplication.timeSinceStartup;
-            Activity.Run(delegate(Activity a) {
-                float e = (float)UnityEditor.EditorApplication.timeSinceStartup - t;
-                Debug.Log(e);
-                if(e>15f) return false;
-                return true;
-            });
-        }
-
-        #endif
+        #region Manager
 
         /// <summary>
         /// Behaviour to handle all activity  executions.
@@ -130,6 +116,9 @@ namespace UnityExt.Core {
             internal void OnDestroy()    { if(m_handler!=null) { m_handler.Clear(); m_handler=null; }  }
 
             #if UNITY_EDITOR
+            /// <summary>
+            /// Execution Loop for Editor.
+            /// </summary>
             public   void EditorUpdate() { 
                 //Skip editor updates when playing
                 if(Application.isPlaying) return; 
