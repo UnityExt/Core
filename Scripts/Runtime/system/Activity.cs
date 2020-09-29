@@ -7,6 +7,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using Unity.Jobs;
 using System.Reflection;
+using System.Text;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -400,10 +401,22 @@ namespace UnityExt.Core {
         internal void InitActivity(string p_id,ActivityContext p_context) {
             state       = ActivityState.Idle;
             context     = p_context;
-            string tn   = string.IsNullOrEmpty(m_type_name) ? (m_type_name = GetType().Name.ToLower()) : m_type_name;
-            id          = string.IsNullOrEmpty(p_id) ? tn+"-"+GetHashCode().ToString("x6") : p_id;                             
+            if(!string.IsNullOrEmpty(p_id)) return;
+            if(m_type_name_lut == null) m_type_name_lut = new Dictionary<Type, string>();
+            if(m_id_sb==null)           m_id_sb         = new StringBuilder();
+            m_id_sb.Clear();
+            Type t = GetType();
+            string tn = "";
+            if(m_type_name_lut.ContainsKey(t)) tn = m_type_name_lut[t]; else { tn = t.Name.ToLower(); m_type_name_lut[t] = tn; }
+            if(!string.IsNullOrEmpty(tn)) { m_id_sb.Append(tn); m_id_sb.Append("-"); }
+            uint hc = (uint)GetHashCode();
+            //GC Free ToHex
+            while(hc>0) { m_id_sb.Append(m_id_hex_lut[(int)(hc&2)]); hc = hc>>2; }            
+            id = m_id_sb.ToString();
         }
-        private string m_type_name;
+        static private Dictionary<Type,string> m_type_name_lut;
+        static private StringBuilder           m_id_sb;
+        static private string                  m_id_hex_lut = "0123456789abcdef";
         
         #endregion
 
@@ -418,7 +431,7 @@ namespace UnityExt.Core {
             if(state == ActivityState.Idle)
             if(m_task==null) {
                 m_task_cancel = new CancellationTokenSource();
-                m_task        = new Task(OnTaskCompleteDummy,m_task_cancel.Token);
+                m_task        = new Task(OnTaskCompleteDummy,m_task_cancel.Token);                
                 m_yield_ms    = 0;
             }            
             //Add to execution queue

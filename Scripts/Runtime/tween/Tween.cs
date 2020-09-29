@@ -366,86 +366,6 @@ namespace UnityExt.Core {
 
         #region Run
 
-        #region Execute Callback
-
-        #region Easing Method
-        /// <summary>
-        /// Creates and execute a tween animation, applying the property change in the target object. 
-        /// A 'from' value can be specified and will be snaped upon tween start, otherwise the tween will sample the current property value.
-        /// The tween can have a delay before it animates along 'duration'.
-        /// Count will define how much cycles the tween will repeat. The wrap mode will determine if the property will snap to the last value reached or loop/pingpong it.
-        /// </summary>
-        /// <typeparam name="T">Type of the property to be animated.</typeparam>
-        /// <param name="p_id">Tween Id</param>
-        /// <param name="p_target">Target object. If a 'static' variable, a System.Type must be passed.</param>
-        /// <param name="p_property">Target's property.</param>
-        /// <param name="p_from">Start Value.</param>
-        /// <param name="p_to">End Value.</param>
-        /// <param name="p_duration">Tween duration.</param>
-        /// <param name="p_delay">Delay before start.</param>
-        /// <param name="p_count">Tween repeats.</param>
-        /// <param name="p_easing">Easing equation or curve.</param>
-        /// <param name="p_wrap">Tween animation wrap.</param>
-        /// <param name="p_callback">Execution handler.</param>
-        /// <returns>Tween already running.</returns>
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,int p_count=1,Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,              Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,float p_duration,                               Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,                                                Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,int p_count=1,Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,              Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,float p_duration,                               Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,                                                Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,int p_count=1,Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,              Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,float p_duration,                               Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,                                                Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,int p_count=1,Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,              Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,                               Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,                                                Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        #endregion
-
-        #region Easing Curve
-        /// <summary>
-        /// Creates and execute a tween animation, applying the property change in the target object. 
-        /// A 'from' value can be specified and will be snaped upon tween start, otherwise the tween will sample the current property value.
-        /// The tween can have a delay before it animates along 'duration'.
-        /// Count will define how much cycles the tween will repeat. The wrap mode will determine if the property will snap to the last value reached or loop/pingpong it.
-        /// </summary>
-        /// <typeparam name="T">Type of the property to be animated.</typeparam>
-        /// <param name="p_id">Tween Id</param>
-        /// <param name="p_target">Target object. If a 'static' variable, a System.Type must be passed.</param>
-        /// <param name="p_property">Target's property.</param>
-        /// <param name="p_from">Start Value.</param>
-        /// <param name="p_to">End Value.</param>
-        /// <param name="p_duration">Tween duration.</param>
-        /// <param name="p_delay">Delay before start.</param>
-        /// <param name="p_count">Tween repeats.</param>
-        /// <param name="p_easing">Easing equation or curve.</param>
-        /// <param name="p_wrap">Tween animation wrap.</param>
-        /// <param name="p_callback">Execution handler.</param>
-        /// <returns>Tween already running.</returns>
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,int p_count=1,AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,              AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,float p_duration,                               AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,T p_from,T p_to,                                                AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_from,p_to,true, DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,int p_count=1,AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,              AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,float p_duration,                               AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(string p_id,object p_target,string p_property,         T p_to,                                                AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>(p_id,p_target,p_property,p_to,  p_to,false,DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,int p_count=1,AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,float p_duration,float p_delay=0f,              AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,float p_duration,                               AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,T p_from,T p_to,                                                AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_from,p_to,true, DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,int p_count=1,AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,p_count,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,              AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,                               AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,           0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,                                                AnimationCurve p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Predicate<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,DefaultDuration,      0f,      1,p_easing,p_wrap,p_callback,null,null); n.Start(); return n; }
-        #endregion
-
-        #endregion
-
         #region Complete Callback
 
         #region Easing Method
@@ -777,9 +697,9 @@ namespace UnityExt.Core {
         /// </summary>        
         internal void CreateTween(object p_target,string p_property,T p_from,T p_to,bool p_has_from,object p_easing,AnimationWrapMode p_wrap) {                        
             //First create the interpolator
-            interpolator = Interpolator.Get<T>();
-            interpolator.to = p_to;
-            if(p_has_from) interpolator.from = p_from;
+            interpolator = Interpolator.Get<T>();            
+            //Set the value range and if it should sample from the current value
+            interpolator.Set(p_from,p_to,p_has_from);
             //Then keep going with init.
             CreateTween(p_target,p_property,p_easing,p_wrap);
         }

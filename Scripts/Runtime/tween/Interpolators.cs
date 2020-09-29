@@ -169,8 +169,14 @@ namespace UnityExt.Core {
                 Debug.LogWarning($"Interpolator> Failed to find interpolator for type [{(vt==null ? "<null>" : vt.FullName)}]");
                 return new Interpolator();
             }
-            return (Interpolator)it.GetConstructor(m_interpolator_empty_ctor).Invoke(m_interpolator_empty_args);
+            //Fetch cached constructor info reference
+            if(m_interpolator_ctor_lut==null) m_interpolator_ctor_lut = new Dictionary<Type, ConstructorInfo>();
+            has_key  = m_interpolator_ctor_lut.ContainsKey(it);
+            ConstructorInfo ci = has_key ? m_interpolator_ctor_lut[it] : it.GetConstructor(m_interpolator_empty_ctor);
+            if(!has_key) m_interpolator_ctor_lut[it] = ci;
+            return (Interpolator)ci.Invoke(m_interpolator_empty_args);
         }
+        static Dictionary<Type,ConstructorInfo> m_interpolator_ctor_lut;
         static Type[]   m_interpolator_empty_ctor = new Type[0];
         static object[] m_interpolator_empty_args = new object[0];
         
@@ -179,7 +185,35 @@ namespace UnityExt.Core {
         /// </summary>
         /// <typeparam name="T">Data Type to be interpolated.</typeparam>        
         /// <returns>Reference to the interpolator or null.</returns>
-        static public Interpolator<T> Get<T>() { return Get(typeof(T)) as Interpolator<T>; }
+        static public Interpolator<T> Get<T>() { 
+            Interpolator res = null;
+            //Use direct testing to speed up instantiation
+            if(typeof(byte      ) == typeof(T)) res = new ByteInterpolator         ();
+            if(typeof(sbyte     ) == typeof(T)) res = new SByteInterpolator        ();
+            if(typeof(ushort    ) == typeof(T)) res = new UShortInterpolator       ();
+            if(typeof(short     ) == typeof(T)) res = new ShortInterpolator        ();
+            if(typeof(uint      ) == typeof(T)) res = new UIntInterpolator         ();
+            if(typeof(int       ) == typeof(T)) res = new IntInterpolator          ();
+            if(typeof(ulong     ) == typeof(T)) res = new ULongInterpolator        ();
+            if(typeof(long      ) == typeof(T)) res = new LongInterpolator         ();
+            if(typeof(float     ) == typeof(T)) res = new FloatInterpolator        ();
+            if(typeof(double    ) == typeof(T)) res = new DoubleInterpolator       ();
+            if(typeof(Vector2   ) == typeof(T)) res = new Vector2Interpolator      ();
+            if(typeof(Vector2Int) == typeof(T)) res = new Vector2IntInterpolator   ();
+            if(typeof(Vector3   ) == typeof(T)) res = new Vector3Interpolator      ();
+            if(typeof(Vector3Int) == typeof(T)) res = new Vector3IntInterpolator   ();
+            if(typeof(Vector4   ) == typeof(T)) res = new Vector4Interpolator      ();
+            if(typeof(Color     ) == typeof(T)) res = new ColorInterpolator        ();
+            if(typeof(Color32   ) == typeof(T)) res = new Color32Interpolator      ();
+            if(typeof(Rect      ) == typeof(T)) res = new RectInterpolator         ();
+            if(typeof(RangeInt  ) == typeof(T)) res = new RangeIntInterpolator     ();
+            if(typeof(Ray       ) == typeof(T)) res = new RayInterpolator          ();
+            if(typeof(Ray2D     ) == typeof(T)) res = new Ray2DInterpolator        ();
+            if(typeof(Quaternion) == typeof(T)) res = new QuaternionInterpolator   ();
+            //If not found defaults to reflecion constructor searching.
+            if(res==null) res = Get(typeof(T));
+            return (Interpolator<T>)res;
+        }
 
         #region Dictionary<Type,Type> m_type_interpolator_lut_default
         static Dictionary<Type,Type> m_type_interpolator_lut_default = new Dictionary<Type,Type>() { 
@@ -339,8 +373,15 @@ namespace UnityExt.Core {
                 return;
             }                  
             Type   target_type = isStatic ? ((Type)m_target) : m_target.GetType();
+            //MemberInfo LUT
+            if(m_type_mi_lut==null) m_type_mi_lut = new Dictionary<Type, MemberInfo[]>();
+            bool         has_key = m_type_mi_lut.ContainsKey(target_type);
+            MemberInfo[] mi      = null;
             //Fetch field info
-            MemberInfo[] mi = target_type==null ? null : target_type.GetMember(property,BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.GetField | BindingFlags.GetProperty | BindingFlags.SetProperty);
+            if(target_type!=null) {
+                mi = has_key ? m_type_mi_lut[target_type] : target_type.GetMember(property,BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.GetField | BindingFlags.GetProperty | BindingFlags.SetProperty);
+                if(!has_key) m_type_mi_lut[target_type] = mi;
+            }
             //Assert if property exists
             bool is_mi_valid = mi==null ? false : mi.Length>0;            
             if(!is_mi_valid) { Debug.LogWarning($"Interpolator> Failed to find {(isStatic ? "static " : "")}property [{property}] of [{target_type.FullName}]"); return; }            
@@ -349,20 +390,16 @@ namespace UnityExt.Core {
             //If property generate specific delegates to speedup the property manipulation
             if(m_target_property_accessor.MemberType == MemberTypes.Property) {
                 Type   delegate_type = null;
-                object invoker       = isStatic ? null : m_target;
+                object invoker    = isStatic ? null : m_target;
                 PropertyInfo pi   = (PropertyInfo)m_target_property_accessor;                
                 Type         pi_t = pi.PropertyType;                                
                 MethodInfo   fni  = null;
-                //if(pi.PropertyType == typeof(Vector2)) fni.CreateDelegate(typeof(Vector2Getter),invoker);                
-
                 fni = pi.GetGetMethod();
                 delegate_type = m_type_getter_delegate_lut.ContainsKey(pi_t) ? m_type_getter_delegate_lut[pi_t] : null;
-                m_target_property_getter = delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));
-                
+                m_target_property_getter = GetCachedDelegate(ref m_object_getter_lut,invoker==null ? target_type : invoker,delegate_type,fni);//delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));                
                 fni = pi.GetSetMethod();
                 delegate_type = m_type_setter_delegate_lut.ContainsKey(pi_t) ? m_type_setter_delegate_lut[pi_t] : null;
-                m_target_property_setter = delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));
-
+                m_target_property_setter = GetCachedDelegate(ref m_object_setter_lut,invoker==null ? target_type : invoker,delegate_type,fni);//delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));
             }
             isValid = m_target_property_getter==null ? false : (m_target_property_setter==null ? false : true);            
             if(!isValid) {
@@ -376,6 +413,26 @@ namespace UnityExt.Core {
             //Set valid
             isValid = true;
             
+        }
+        static private Dictionary<Type,MemberInfo[]> m_type_mi_lut;
+        static private Dictionary<Type,Dictionary<object,Delegate>> m_object_getter_lut;
+        static private Dictionary<Type,Dictionary<object,Delegate>> m_object_setter_lut;
+        static private Delegate GetCachedDelegate(ref Dictionary<Type,Dictionary<object,Delegate>>p_lut,object p_target,Type p_delegate_type,MethodInfo p_method) {
+            if(p_lut==null) p_lut = new Dictionary<Type, Dictionary<object, Delegate>>();
+            if(p_delegate_type == null) return null;
+            if(p_method        == null) return null;            
+            Dictionary<object,Delegate> tdl = null;
+            Delegate                    res = null;
+            bool has_key = false;
+            has_key = p_lut.ContainsKey(p_delegate_type);
+            if(has_key)   tdl = p_lut[p_delegate_type];
+            if(tdl==null) tdl = new Dictionary<object, Delegate>();
+            if(!has_key) p_lut[p_delegate_type] = tdl;
+            has_key = tdl.ContainsKey(p_target);
+            if(has_key) res = tdl[p_target];
+            if(res == null) res = p_method.CreateDelegate(p_delegate_type,p_target is Type ? null : p_target);
+            if(res != null) if(!has_key) tdl[p_target] = res;
+            return res;
         }
 
         #endregion
@@ -608,14 +665,6 @@ namespace UnityExt.Core {
         /// <param name="p_ratio"></param>
         virtual protected void OnLerp(float p_ratio) { }
 
-        /// <summary>
-        /// Helper for the typed version.
-        /// </summary>
-        /// <param name="p_from"></param>
-        /// <param name="p_to"></param>
-        /// <param name="p_has_from"></param>
-        virtual internal void Set(object p_from,object p_to,bool p_has_from) { }
-
         #endregion
 
     }
@@ -713,19 +762,6 @@ namespace UnityExt.Core {
             Set(p_from,p_to,p_has_from);
         }
 
-        /// <summary>
-        /// Helper
-        /// </summary>
-        /// <param name="p_from"></param>
-        /// <param name="p_to"></param>
-        /// <param name="p_has_from"></param>
-        override internal void Set(object p_from,object p_to,bool p_has_from) {
-            to = (T)p_to;
-            if(p_has_from) from = (T)p_from;            
-            m_first_iteration = true;
-            m_capture_from    = p_has_from;
-        }
-
         #endregion
 
         /// <summary>
@@ -738,6 +774,19 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_value"></param>
         virtual protected void SetProperty(T p_value) { }
+
+        /// <summary>
+        /// Sets 'from' and 'to' preparing for capturing 'from' if needed.
+        /// </summary>
+        /// <param name="p_from"></param>
+        /// <param name="p_to"></param>
+        /// <param name="p_has_from"></param>
+        virtual public void Set(T p_from,T p_to,bool p_has_from) {
+            to = p_to;
+            if(p_has_from) from = p_from;            
+            m_first_iteration = true;
+            m_capture_from    = !p_has_from;            
+        }
 
         /// <summary>
         /// Handler to manipulate the data and returns its next value.
@@ -1019,7 +1068,7 @@ namespace UnityExt.Core {
     public class Vector3Interpolator    : UnityVectorInterpolator<Vector3>     { 
         protected override void  SetFromField()            { from = GetVector3(); }
         protected override void  SetProperty(Vector3 p_value) { SetVector3(p_value); }
-        protected override Vector3    LerpValue(float p_ratio) { Vector3    dv  = (Vector3)(to-from);     Vector3    off = ApplyMask(dv*p_ratio);  return from + off; } 
+        protected override Vector3    LerpValue(float p_ratio) { Vector3    dv  = (Vector3)(to-from); Vector3    off = ApplyMask(dv*p_ratio);  return from + off; } 
     }
     /// <summary>
     /// Class Extension to interpolate 'Vector3Int'
