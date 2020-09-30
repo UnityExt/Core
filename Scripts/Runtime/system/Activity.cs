@@ -82,7 +82,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Stopped
         /// </summary>
-        Stopped
+        Stopped        
     }
 
     #endregion
@@ -173,6 +173,248 @@ namespace UnityExt.Core {
             }
         }
         static private Manager m_manager;
+
+        #region Manager Inspector
+        #if UNITY_EDITOR
+
+        /// <summary>
+        /// Class to handle the activity manager inspector.
+        /// </summary>
+        [CustomEditor(typeof(Manager))]
+        public class ManagerInspector : Editor {
+
+            /// <summary>
+            /// CTOR.
+            /// </summary>
+            protected void OnEnable() {
+                
+            }
+
+            /// <summary>
+            /// GUI
+            /// </summary>
+            public override void OnInspectorGUI() {            
+                SerializedObject so = serializedObject;
+                SerializedProperty sp = so.GetIterator();
+                //Enter
+                sp.NextVisible(true);
+                //Iterate properties
+                while(sp.NextVisible(false)) {
+                    switch(sp.displayName.ToLower()) {
+                        case "script": break;
+                        default: {
+                            EditorGUILayout.PropertyField(sp);
+                        }
+                        break;
+                    }
+                }
+
+                Manager t = target as Manager;
+                if(!t)      return;
+                ActivityManager h = t.handler;
+                if(h==null) return;
+                
+                //GUIStyle stl;
+
+                GUILayout.Space(5f);
+
+                if(HeaderFoldoutGUI("Stats","")) {
+                    EditorGUI.indentLevel++;
+                    EditorGUILayout.LabelField("Max Threads: ",Activity.maxThreadCount.ToString(),EditorStyles.miniLabel);
+                    EditorGUILayout.LabelField("Total Nodes: ",h.GetCountTotal().ToString(),EditorStyles.miniLabel);
+                    EditorGUI.indentLevel--;
+                }
+
+                GUILayout.Space(2f);
+
+                if(HeaderFoldoutGUI($"Update",$"{h.lu.profilerTimeStr} | {h.lu.Count}")) {
+                    EditorGUI.indentLevel++;  
+                    if(h.lu.Count <= 0) {
+                        EditorGUILayout.HelpBox("No Nodes Running", MessageType.Warning);
+                    }
+                    else {
+                        ListActivityGUI(h.lu.la);
+                        ListInterfaceGUI(h.lu.li);
+                    }
+                    EditorGUI.indentLevel--;
+                }
+
+                GUILayout.Space(2f);
+
+                if(HeaderFoldoutGUI($"AsyncUpdate",$"{h.lau.profilerTimeStr} | {h.lau.Count}")) {
+                    EditorGUI.indentLevel++;
+                    if(h.lau.Count <= 0) {
+                        EditorGUILayout.HelpBox("No Nodes Running", MessageType.Warning);
+                    }
+                    else {
+                        ListActivityGUI(h.lau.la);
+                        ListInterfaceGUI(h.lau.li);
+                    }
+                    EditorGUI.indentLevel--;
+                }
+
+                GUILayout.Space(2f);
+
+                if(HeaderFoldoutGUI($"LateUpdate",$"{h.llu.profilerTimeStr} | {h.llu.Count}")) {
+                    EditorGUI.indentLevel++;  
+                    if(h.llu.Count <= 0) {
+                        EditorGUILayout.HelpBox("No Nodes Running", MessageType.Warning);
+                    }
+                    else {
+                        ListActivityGUI(h.llu.la);
+                        ListInterfaceGUI(h.llu.li);
+                    }
+                    EditorGUI.indentLevel--;
+                }
+
+                GUILayout.Space(2f);
+
+                if(HeaderFoldoutGUI($"FixedUpdate",$"{h.lfu.profilerTimeStr} | {h.lfu.Count}")) {                    
+                    EditorGUI.indentLevel++;                    
+                    if(h.lfu.Count <= 0) {
+                        EditorGUILayout.HelpBox("No Nodes Running", MessageType.Warning);
+                    }
+                    else {
+                        ListActivityGUI(h.lfu.la);
+                        ListInterfaceGUI(h.lfu.li);
+                    }
+                    EditorGUI.indentLevel--;
+                }
+
+                GUILayout.Space(2f);
+
+                if(HeaderFoldoutGUI("Threads","")) {                    
+                    GUILayout.Space(1f);
+                    EditorGUI.indentLevel++;
+                    for(int i=0;i<h.lt.Length;i++) {
+                        if(HeaderFoldoutGUI($"Pool {(i+1)}",$"{h.lt[i].profilerTimeStr} | {h.lt[i].Count}",new Color(0.2f,0.2f,0.2f),EditorStyles.miniBoldLabel)) {
+                            if(h.lt[i].Count <= 0) {
+                                EditorGUILayout.HelpBox("No Nodes Running", MessageType.Warning);
+                            }
+                            else {
+                                ListActivityGUI(h.lt[i].la);
+                                ListInterfaceGUI(h.lt[i].li);
+                            }                            
+                        }
+                        GUILayout.Space(1f);
+                    }
+                    EditorGUI.indentLevel--;
+                }
+
+                GUILayout.Space(2f);
+                
+                Repaint();
+
+            }
+
+            /// <summary>
+            /// Custom Foldout GUI
+            /// </summary>
+            /// <param name="p_label"></param>
+            /// <returns></returns>
+            public bool HeaderFoldoutGUI(string p_label,string p_caption,Color p_color,GUIStyle p_style=null) {
+                GUIStyle stl = null;
+                string fo_k = $"activity-manager-{p_label.ToLower()}";
+                bool vb1 = EditorPrefs.GetBool(fo_k,false);
+                Rect r = GUILayoutUtility.GetRect(Screen.width,EditorGUIUtility.singleLineHeight*1.5f);
+                r.xMin -= 15f;
+                r.xMax += 15f;
+                GUI.DrawTexture(r,Texture2D.whiteTexture, ScaleMode.StretchToFill,true,1f,p_color,0f,2f);
+                r = EditorGUI.IndentedRect(r); r.xMin+=15f; r.y+=5f;
+                bool vb2 = EditorGUI.Foldout(r,vb1,"");
+                if(vb1!=vb2) { EditorPrefs.SetBool(fo_k,vb2); }
+                if(p_style!=null) { stl = new GUIStyle(p_style); r.xMin += 2f; r.y-=1f; }
+                if(stl==null)     { stl = new GUIStyle(EditorStyles.whiteLargeLabel); stl.fontSize = 14; stl.fontStyle = FontStyle.Bold; stl.alignment=TextAnchor.MiddleLeft; r.xMin += 16f; r.y-=6f; }                
+                EditorGUI.LabelField(r,p_label,stl);   
+                if(!string.IsNullOrEmpty(p_caption)) {
+                    r.xMax -= 80f;
+                    r.xMin = r.xMax-120f;
+                    if(p_style!=null) r.y -= 6f;
+                    stl.fontSize  = 10;
+                    stl.alignment = TextAnchor.MiddleRight;
+                    EditorGUI.LabelField(r,p_caption,stl);   
+                }                
+                return vb2;
+            }
+
+            /// <summary>
+            /// Custom Foldout GUI
+            /// </summary>
+            /// <param name="p_label"></param>
+            /// <param name="p_color"></param>
+            /// <param name="p_style"></param>
+            /// <returns></returns>
+            public bool HeaderFoldoutGUI(string p_label,string p_caption,GUIStyle p_style = null) { return HeaderFoldoutGUI(p_label,p_caption,new Color(0.22f,0.22f,0.22f),p_style); }
+
+            /// <summary>
+            /// Draws the activity list gui for each item.
+            /// </summary>
+            /// <param name="p_list"></param>
+            public void ListActivityGUI(IList<Activity> p_list) {
+                if(p_list==null) return;
+                GUIStyle toggle_stl   = new GUIStyle(EditorStyles.miniLabel);                
+                GUIStyle caption_stl  = new GUIStyle(EditorStyles.miniLabel);
+                caption_stl.alignment = TextAnchor.MiddleRight;
+                GUIStyle mini_btn_stl = new GUIStyle(EditorStyles.miniButton);
+                for(int i=0;i<p_list.Count;i++) {
+                    Activity it = p_list[i];
+                    if(it==null) continue;
+                    //Rect r = GUILayoutUtility.GetRect(Screen.width,EditorGUIUtility.singleLineHeight*0.8f);
+                    EditorGUILayout.BeginHorizontal(GUILayout.Width(Screen.width-87f)); {
+                        it.enabled = EditorGUILayout.ToggleLeft(it.id,it.enabled,toggle_stl);
+                        EditorGUILayout.LabelField(it.profilerTimeStr,caption_stl,GUILayout.Width(80f));
+                        if(GUILayout.Button("Stop",mini_btn_stl,GUILayout.Width(80f))) {
+                            it.Stop(); 
+                        }
+                    }
+                    EditorGUILayout.EndHorizontal();
+                    GUILayout.Space(-1f);
+                }
+            }
+
+            /// <summary>
+            /// Draws the interface list gui for each item.
+            /// </summary>
+            /// <param name="p_list"></param>
+            public void ListInterfaceGUI<T>(IList<T> p_list) {
+                if(p_list==null) return;
+                GUIStyle toggle_stl   = new GUIStyle(EditorStyles.miniLabel);
+                GUIStyle caption_stl  = new GUIStyle(EditorStyles.miniLabel);
+                caption_stl.alignment = TextAnchor.MiddleRight;
+                GUIStyle mini_btn_stl = new GUIStyle(EditorStyles.miniButton);
+                bool vb;
+                for(int i=0;i<p_list.Count;i++) {
+                    T it = p_list[i];
+                    if(it==null) continue;
+                    UnityEngine.Behaviour it_b = it is UnityEngine.Behaviour ? (UnityEngine.Behaviour)(object)it : null;
+                    string itf_n = it_b ? it_b.name : it.GetType().Name;
+                    //Rect r = GUILayoutUtility.GetRect(Screen.width,EditorGUIUtility.singleLineHeight*0.8f);
+                    EditorGUILayout.BeginHorizontal(GUILayout.Width(Screen.width-87f)); {
+                        ActivityBehaviour it_ab=null;
+                        if(it_b) {                                
+                            vb = EditorGUILayout.ToggleLeft(itf_n,it_b.enabled,toggle_stl);
+                            if(vb != it_b.enabled) it_b.enabled = vb;
+                            it_ab = it_b as ActivityBehaviour;                            
+                        }
+                        else {
+                            GUI.color = new Color(1f,1f,1f,0.05f);
+                            EditorGUILayout.ToggleLeft(itf_n,false,toggle_stl);
+                            GUI.color = Color.white;
+                        }                        
+                        EditorGUILayout.LabelField(it_ab ? it_ab.profilerTimeStr : "---ms",caption_stl,GUILayout.Width(80f));
+                        if(GUILayout.Button("Stop",mini_btn_stl,GUILayout.Width(80f))) {
+                            Activity.Remove(it);
+                        }
+                    }
+                    EditorGUILayout.EndHorizontal();
+                    GUILayout.Space(-1f);
+                }
+            }
+
+        }
+
+        #endif
+        #endregion
 
         #endregion
 
@@ -314,6 +556,21 @@ namespace UnityExt.Core {
         public string id;
 
         /// <summary>
+        /// Last execution ms.
+        /// </summary>
+        public float profilerMs;
+
+        /// <summary>
+        /// Last execution ns
+        /// </summary>
+        public long profilerUs { get { return (long)(Mathf.Round(profilerMs*10f)*100f); } }
+
+        /// <summary>
+        /// Returns a formatted string telling the profiled time.
+        /// </summary>
+        public string profilerTimeStr { get { long ut = profilerUs; return profilerMs<1f ? (ut<=0 ? "0 ms" : $"{ut} us") : $"{Mathf.RoundToInt(profilerMs)} ms"; }  }
+
+        /// <summary>
         /// Execution state
         /// </summary>
         public ActivityState state { get; internal set; }        
@@ -328,6 +585,22 @@ namespace UnityExt.Core {
         /// Has the activity finished.
         /// </summary>
         public bool completed { get { return state == ActivityState.Complete; } }
+
+        /// <summary>
+        /// Flag that tells this activity can run.
+        /// </summary>
+        public bool enabled { get { return m_enabled; } set { if(m_enabled!=value) { m_enabled=value; if(m_enabled) OnEnable(); else OnDisable(); } } }
+        private bool m_enabled;
+
+        /// <summary>
+        /// Handler for when this activity is enabled.
+        /// </summary>
+        virtual protected void OnEnable() { }
+
+        /// <summary>
+        /// Handler for when this activity is disabled.
+        /// </summary>
+        virtual protected void OnDisable() { }
 
         #region Events
 
@@ -401,18 +674,28 @@ namespace UnityExt.Core {
         internal void InitActivity(string p_id,ActivityContext p_context) {
             state       = ActivityState.Idle;
             context     = p_context;
-            if(!string.IsNullOrEmpty(p_id)) return;
+            enabled     = true;
+            id = p_id;
+            if(!string.IsNullOrEmpty(id)) { return; }
             if(m_type_name_lut == null) m_type_name_lut = new Dictionary<Type, string>();
             if(m_id_sb==null)           m_id_sb         = new StringBuilder();
             m_id_sb.Clear();
             Type t = GetType();
             string tn = "";
-            if(m_type_name_lut.ContainsKey(t)) tn = m_type_name_lut[t]; else { tn = t.Name.ToLower(); m_type_name_lut[t] = tn; }
+            if(m_type_name_lut.ContainsKey(t)) {
+                tn=m_type_name_lut[t];
+            }
+            else { 
+                Type[] gtl = t.GetGenericArguments();
+                tn = t.Name.ToLower().Replace("`","");
+                if(gtl.Length>0) { tn=tn.Replace("1",""); tn+=$"<{gtl[0].Name.ToLower()}>"; }
+                m_type_name_lut[t]=tn; 
+            }
             if(!string.IsNullOrEmpty(tn)) { m_id_sb.Append(tn); m_id_sb.Append("-"); }
             uint hc = (uint)GetHashCode();
             //GC Free ToHex
-            while(hc>0) { m_id_sb.Append(m_id_hex_lut[(int)(hc&2)]); hc = hc>>2; }            
-            id = m_id_sb.ToString();
+            while(hc>0) { m_id_sb.Append(m_id_hex_lut[(int)(hc&0xf)]); hc = hc>>4; }            
+            id = m_id_sb.ToString();                        
         }
         static private Dictionary<Type,string> m_type_name_lut;
         static private StringBuilder           m_id_sb;
@@ -453,7 +736,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Executes one loop step.
         /// </summary>
-        virtual internal void Execute() {
+        virtual internal void Execute() {            
             switch(state) {
                 case ActivityState.Stopped:  return;
                 case ActivityState.Complete: return;

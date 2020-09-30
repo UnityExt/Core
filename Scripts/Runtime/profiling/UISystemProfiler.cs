@@ -199,10 +199,10 @@ namespace UnityExt.Core.UI {
         /// <summary>
         /// Executes the loop and collect information.
         /// </summary>
-        override protected void Update() {    
+        override public void OnUpdate() {    
             if(!Application.isPlaying) return;
             //Update Profiler
-            base.Update();        
+            base.OnUpdate();        
             //Sample data/time
             float dt     = Time.unscaledDeltaTime;            
             int   dt_ms  = (int)(dt*1000f);

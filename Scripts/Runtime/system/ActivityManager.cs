@@ -12,6 +12,46 @@ namespace UnityExt.Core {
     /// It can be used for controlling the execution loop in a different way than the standard one.
     /// </summary>
     public class ActivityManager {
+
+            #region static
+
+            /// <summary>
+            /// Profile Clock
+            /// </summary>
+            static public System.Diagnostics.Stopwatch profilerClock;
+
+            /// <summary>
+            /// Elapsed Ms of the Profiler Clock
+            /// </summary>
+            static public float profilerClockMs { 
+                get { 
+                    long   ms    = profilerClock==null ? 0 : profilerClock.ElapsedMilliseconds; 
+                    double cf    = System.Diagnostics.Stopwatch.Frequency;
+                    float  ms_f  = cf<=0f ? 0f : (float)(((double)profilerClockCycles / cf)*1000.0);
+                    return ms_f;
+                }
+            }
+
+            /// <summary>
+            /// Elapsed cycles of the profiler clock
+            /// </summary>
+            static public long profilerClockCycles { get { return profilerClock==null ? 0 : profilerClock.ElapsedTicks; } }
+
+            /// <summary>
+            /// Flag that tells profiling will be made.
+            /// </summary>
+            static public bool profilerClockEnabled;
+
+            /// <summary>
+            /// CTOR
+            /// </summary>
+            static ActivityManager() {
+                if(profilerClock==null) { profilerClock = new System.Diagnostics.Stopwatch(); profilerClock.Start(); }
+                profilerClockEnabled = Debug.isDebugBuild ? true : Application.isEditor;
+            }
+
+            #endregion
+
     
             #region class List
 
@@ -39,6 +79,31 @@ namespace UnityExt.Core {
                 /// Timer for async loops.
                 /// </summary>
                 public System.Diagnostics.Stopwatch timer;
+
+                /// <summary>
+                /// Last execution ms.
+                /// </summary>
+                public float profilerMs;
+
+                /// <summary>
+                /// Last execution ns
+                /// </summary>
+                public long  profilerUs { get { return (long)(Mathf.Round(profilerMs*10f)*100f); } }
+
+                /// <summary>
+                /// Returns a formatted string telling the profiled time.
+                /// </summary>
+                public string profilerTimeStr { get { long ut = profilerUs; return profilerMs<1f ? (ut<=0 ? "0 ms" : $"{ut} us") : $"{Mathf.RoundToInt(profilerMs)} ms"; }  }
+
+                /// <summary>
+                /// Returns the number of activities.
+                /// </summary>
+                public int ActivityCount { get { return la==null ? 0 : la.Count; } }
+
+                /// <summary>
+                /// Returns the count for all node types.
+                /// </summary>
+                virtual public int Count { get { return ActivityCount; } }
 
                 /// <summary>
                 /// CTOR.
@@ -167,7 +232,7 @@ namespace UnityExt.Core {
                     //If async prepare timer
                     if(is_async)  timer.Restart();
                     //If not async iterator is back to 0
-                    if(!is_async) ia=0;
+                    if(!is_async) ia=0;                                        
                     //Iterate across the list bounds
                     for(int i=0;i<la.Count;i++) {
                         //If async check timer slice limit and break out
@@ -175,14 +240,20 @@ namespace UnityExt.Core {
                         //Use iterator for async cases
                         Activity it = ia<0 ? null : (ia>=la.Count ? null : la[ia]);
                         //Check if node can be executed
-                        bool is_valid = it==null ? false : !it.completed;                        
+                        bool can_execute = it==null ? false : (it.completed ? false : it.enabled);                                               
+                        float t0 = profilerClockEnabled ? profilerClockMs : 0;
                         //Steps the activity if valid
-                        if(is_valid) it.Execute();        
+                        if(can_execute) it.Execute();        
+                        float t1 = profilerClockEnabled ? profilerClockMs : 0;
+                        //Store profile ms
+                        it.profilerMs = profilerClockEnabled ? (t1-t0) : 0;
+                        //Accumulate profile time
+                        profilerMs += it.profilerMs;
                         //Range check
                         int c = la.Count;
                         //Increment-loop the iterator (async might be mid iteration)
                         ia = c<=0 ? 0 : ((ia+1)%c);
-                    }
+                    }                    
                 }
 
                 #endregion
@@ -204,6 +275,16 @@ namespace UnityExt.Core {
                 /// Current iterator for interfaces
                 /// </summary>
                 public int ii;
+
+                /// <summary>
+                /// Returns the number of interfaces running.
+                /// </summary>
+                public int InterfaceCount { get { return li==null ? 0 : li.Count; } }
+
+                /// <summary>
+                /// Returns the count for all node types.
+                /// </summary>
+                override public int Count { get { return base.Count + InterfaceCount; } }
 
                 /// <summary>
                 /// CTOR
@@ -271,7 +352,11 @@ namespace UnityExt.Core {
                 /// <summary>
                 /// Executes the lists in the chosen context.
                 /// </summary>
-                override public void Execute() {                    
+                override public void Execute() {                
+                
+                    //Reset ms
+                    profilerMs=0;
+                    
                     //Iterate activities
                     base.Execute();                                        
 
@@ -282,7 +367,10 @@ namespace UnityExt.Core {
                         }
                     }
                     //Skip if empty
-                    if(li.Count<=0) return;
+                    if(li.Count<=0) {                        
+                        return;
+                    }
+                    
                     //Shortcut bool
                     bool is_async = context == ActivityContext.Async;
                     //Same of interfaces
@@ -293,6 +381,8 @@ namespace UnityExt.Core {
                         object li_it = ii>=li.Count ? default(T) : li[ii];
                         //Skip invalid
                         if(li_it==null) continue;                        
+                        ActivityBehaviour b = li_it is ActivityBehaviour ? (ActivityBehaviour)li_it : null;
+                        float t0 = profilerClockEnabled ? profilerClockMs : 0;
                         //Cast the interface based on the context.
                         switch(context) {
                             case ActivityContext.Update:      { IUpdateable       it = (IUpdateable)      li_it; if(it!=null)it.OnUpdate();       } break;
@@ -304,8 +394,13 @@ namespace UnityExt.Core {
                         //Same as above
                         int c = li.Count;
                         ii = c<=0 ? 0 : (ii+1)%c;
+                        float t1 = profilerClockEnabled ? profilerClockMs : 0;
+                        float dt = t1-t0;
+                        if(b) b.profilerMs = dt;
+                        //Accumulate profile time
+                        profilerMs += dt;
                         if(is_async) if(timer.ElapsedMilliseconds>=Activity.asyncTimeSlice) break;
-                    }
+                    }                    
                 }
 
                 #endregion
@@ -335,11 +430,49 @@ namespace UnityExt.Core {
             internal int    thread_queue_target_i;
             internal int    thread_assert_target;
             
-            
+            /// <summary>
+            /// Returns the count based on interface type.
+            /// </summary>
+            /// <typeparam name="T"></typeparam>
+            /// <returns></returns>
+            public int GetCount<T>() {
+                if(typeof(T) == typeof(IUpdateable))       return lu.ActivityCount  + lu.InterfaceCount;
+                if(typeof(T) == typeof(ILateUpdateable))   return llu.ActivityCount + llu.InterfaceCount;
+                if(typeof(T) == typeof(IFixedUpdateable))  return lfu.ActivityCount + lfu.InterfaceCount;
+                if(typeof(T) == typeof(IAsyncUpdateable))  return lau.ActivityCount + lau.InterfaceCount;
+                if(typeof(T) == typeof(IThreadUpdateable)) { int c=0; for(int i=0;i<lt.Length;i++) { c+= lt[i].ActivityCount + lt[i].InterfaceCount; } return c; }                
+                return 0;
+            }
+
+            /// <summary>
+            /// Returns the number of all executing nodes.
+            /// </summary>
+            /// <returns></returns>
+            public int GetCountTotal() {
+                int c=0;
+                c+= lu.ActivityCount  + lu.InterfaceCount;
+                c+= llu.ActivityCount + llu.InterfaceCount;
+                c+= lfu.ActivityCount + lfu.InterfaceCount;
+                c+= lau.ActivityCount + lau.InterfaceCount;
+                for(int i=0;i<lt.Length;i++) { c+= lt[i].ActivityCount + lt[i].InterfaceCount; }
+                return c;
+            }
+
             /// <summary>
             /// CTOR
             /// </summary>
-            public void Awake() {
+            public void Awake() {                                
+                AssertLists();
+                //Index of the thread to add nodes next
+                thread_queue_target_a = 0;
+                thread_queue_target_i = 0;
+                thread_assert_target  = 0;                
+            }
+
+            /// <summary>
+            /// Asserts the existance of the needed lists.
+            /// </summary>
+            protected void AssertLists() {
                 if(lu==null)  lu  = new List<IUpdateable>(ActivityContext.Update);
                 if(llu==null) llu = new List<ILateUpdateable>(ActivityContext.LateUpdate);
                 if(lfu==null) lfu = new List<IFixedUpdateable>(ActivityContext.FixedUpdate);
@@ -349,13 +482,11 @@ namespace UnityExt.Core {
                 if(ltq_jobs == null) ltq_jobs = new SCG.List<Action>();                
                 //Init threads based on max allowed threads.
                 int max_thread = Activity.maxThreadCount;
-                if(lt==null)   lt   = new List<IThreadUpdateable>[max_thread];
-                for(int i=0;i<lt.Length;i++) lt[i] = new List<IThreadUpdateable>(ActivityContext.Thread);
+                if(lt==null) {
+                    lt   = new List<IThreadUpdateable>[max_thread];
+                    for(int i=0;i<lt.Length;i++) lt[i] = new List<IThreadUpdateable>(ActivityContext.Thread);
+                }                
                 if(thdl==null) thdl = new Thread[max_thread];
-                //Index of the thread to add nodes next
-                thread_queue_target_a = 0;
-                thread_queue_target_i = 0;
-                thread_assert_target  = 0;                
             }
 
             /// <summary>
@@ -736,6 +867,9 @@ namespace UnityExt.Core {
             /// Update Loop
             /// </summary>
             public void Update() {
+                #if UNITY_EDITOR
+                if(lu  == null) AssertLists();                
+                #endif
                 lu.Execute();
                 lau.Execute();
 
@@ -754,12 +888,22 @@ namespace UnityExt.Core {
             /// <summary>
             /// FixedUpdate Loop
             /// </summary>
-            public void FixedUpdate() { lfu.Execute();  }
+            public void FixedUpdate() { 
+                #if UNITY_EDITOR    
+                if(lfu==null) AssertLists();
+                #endif
+                lfu.Execute();  
+            }
 
             /// <summary>
             /// LateUpdate Loop
             /// </summary>
-            public void LateUpdate()  { llu.Execute();  }
+            public void LateUpdate()  { 
+                #if UNITY_EDITOR    
+                if(llu==null) AssertLists();
+                #endif
+                llu.Execute();  
+            }
 
             /// <summary>
             /// ThreadUpdate Loop

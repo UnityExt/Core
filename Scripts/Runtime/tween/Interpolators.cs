@@ -209,7 +209,7 @@ namespace UnityExt.Core {
             if(typeof(RangeInt  ) == typeof(T)) res = new RangeIntInterpolator     ();
             if(typeof(Ray       ) == typeof(T)) res = new RayInterpolator          ();
             if(typeof(Ray2D     ) == typeof(T)) res = new Ray2DInterpolator        ();
-            if(typeof(Quaternion) == typeof(T)) res = new QuaternionInterpolator   ();
+            if(typeof(Quaternion) == typeof(T)) res = new QuaternionInterpolator   ();            
             //If not found defaults to reflecion constructor searching.
             if(res==null) res = Get(typeof(T));
             return (Interpolator<T>)res;
@@ -372,18 +372,27 @@ namespace UnityExt.Core {
                 //Skip the System.Reflection search phase
                 return;
             }                  
+            //Fetch target object type if static ops the target is the Type
             Type   target_type = isStatic ? ((Type)m_target) : m_target.GetType();
-            //MemberInfo LUT
-            if(m_type_mi_lut==null) m_type_mi_lut = new Dictionary<Type, MemberInfo[]>();
-            bool         has_key = m_type_mi_lut.ContainsKey(target_type);
+            //Cache ops flag
+            bool   has_key     = false;
+            //Assert table of type x property x member-info
+            if(m_type_mi_lut==null) m_type_mi_lut = new Dictionary<Type,Dictionary<string,MemberInfo[]>>();            
             MemberInfo[] mi      = null;
-            //Fetch field info
+            //If there is a type
             if(target_type!=null) {
-                mi = has_key ? m_type_mi_lut[target_type] : target_type.GetMember(property,BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.GetField | BindingFlags.GetProperty | BindingFlags.SetProperty);
-                if(!has_key) m_type_mi_lut[target_type] = mi;
+                //Assert property x member-info
+                has_key = m_type_mi_lut.ContainsKey(target_type);
+                if(!has_key) m_type_mi_lut[target_type] = new Dictionary<string, MemberInfo[]>();
+                //Shortcut its ref
+                Dictionary<string, MemberInfo[]> type_prop_lut = m_type_mi_lut[target_type];
+                //Check if property has a cached member-info otherwise fetch and cache
+                has_key = type_prop_lut.ContainsKey(property);                                
+                mi = has_key ? type_prop_lut[property] : target_type.GetMember(property,BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.GetField | BindingFlags.GetProperty | BindingFlags.SetProperty);
+                if(!has_key) type_prop_lut[property] = mi;
             }
             //Assert if property exists
-            bool is_mi_valid = mi==null ? false : mi.Length>0;            
+            bool is_mi_valid = mi==null ? false : mi.Length>0;
             if(!is_mi_valid) { Debug.LogWarning($"Interpolator> Failed to find {(isStatic ? "static " : "")}property [{property}] of [{target_type.FullName}]"); return; }            
             //Store property accessor
             m_target_property_accessor = mi[0];
@@ -395,10 +404,10 @@ namespace UnityExt.Core {
                 Type         pi_t = pi.PropertyType;                                
                 MethodInfo   fni  = null;
                 fni = pi.GetGetMethod();
-                delegate_type = m_type_getter_delegate_lut.ContainsKey(pi_t) ? m_type_getter_delegate_lut[pi_t] : null;
+                delegate_type = m_type_getter_delegate_lut.ContainsKey(pi_t) ? m_type_getter_delegate_lut[pi_t] : null;                
                 m_target_property_getter = GetCachedDelegate(ref m_object_getter_lut,invoker==null ? target_type : invoker,delegate_type,fni);//delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));                
                 fni = pi.GetSetMethod();
-                delegate_type = m_type_setter_delegate_lut.ContainsKey(pi_t) ? m_type_setter_delegate_lut[pi_t] : null;
+                delegate_type = m_type_setter_delegate_lut.ContainsKey(pi_t) ? m_type_setter_delegate_lut[pi_t] : null;                
                 m_target_property_setter = GetCachedDelegate(ref m_object_setter_lut,invoker==null ? target_type : invoker,delegate_type,fni);//delegate_type==null ? null : (fni==null ? null : fni.CreateDelegate(delegate_type,invoker));
             }
             isValid = m_target_property_getter==null ? false : (m_target_property_setter==null ? false : true);            
@@ -414,7 +423,7 @@ namespace UnityExt.Core {
             isValid = true;
             
         }
-        static private Dictionary<Type,MemberInfo[]> m_type_mi_lut;
+        static private Dictionary<Type,Dictionary<string,MemberInfo[]>> m_type_mi_lut;
         static private Dictionary<Type,Dictionary<object,Delegate>> m_object_getter_lut;
         static private Dictionary<Type,Dictionary<object,Delegate>> m_object_setter_lut;
         static private Delegate GetCachedDelegate(ref Dictionary<Type,Dictionary<object,Delegate>>p_lut,object p_target,Type p_delegate_type,MethodInfo p_method) {

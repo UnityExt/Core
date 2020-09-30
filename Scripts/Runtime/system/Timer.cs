@@ -654,6 +654,14 @@ namespace UnityExt.Core {
         #region Internal Operation
 
         /// <summary>
+        /// Handler for enabling
+        /// </summary>
+        protected override void OnEnable() {
+            //Trigger clock stamp reset;
+            m_clock_stamp=0f;
+        }
+
+        /// <summary>
         /// Resets the time stamps.
         /// </summary>
         internal void ResetClock() {
@@ -690,7 +698,7 @@ namespace UnityExt.Core {
         /// </summary>
         /// <returns></returns>
         internal override bool CanStartInternal() {
-            //If delay is reached, reset elapsed and keep going
+            //If delay is reached, reset elapsed and keep going            
             if(m_elapsed>=delay) { 
                 m_elapsed = 0f; 
                 return true; 
@@ -712,7 +720,9 @@ namespace UnityExt.Core {
             }
             //Computes the timer own delta-time based on the timestamps
             float t = GetClock();
-            m_clock_delta_time = paused ? 0f : ((t - m_clock_time)*m_speed_internal);
+            //Sample speed only after 'delay'
+            float spd = state == ActivityState.Running ? m_speed_internal : 1f;
+            m_clock_delta_time = paused ? 0f : ((t - m_clock_time)*spd);
             m_clock_time = t;
             //If 'running' start updating 'elapsed' past the delay
             switch(state) {

@@ -11,7 +11,7 @@ namespace UnityExt.Core {
     /// <summary>
     /// Utility component that captures execution statistics and plot a simplified graph and update fields with stats.
     /// </summary>        
-    public class UIMicroProfiler : MonoBehaviour {
+    public class UIMicroProfiler : ActivityBehaviour, IUpdateable {
 
         #region static
 
@@ -118,6 +118,7 @@ namespace UnityExt.Core {
         private RectTransform m_field_rt;
         private StringBuilder m_field_sb;        
         private int           m_sample_frame;
+        private bool          m_initialized;
         static private List<string>  m_number_string;
 
 
@@ -139,11 +140,21 @@ namespace UnityExt.Core {
         protected void Start() {            
             Initialize();
         }
+
+        #if UNITY_EDITOR
+        override protected void OnEnable() {
+            base.OnEnable();
+            Initialize();
+        }
+        #endif
         
         /// <summary>
         /// CTOR.
         /// </summary>
         virtual protected void Initialize() {
+            //Lock flag
+            if(m_initialized) return;
+            m_initialized = true;
             //Clears the graph
             Clear();
             //Cache the field RT
@@ -153,12 +164,18 @@ namespace UnityExt.Core {
             //Next buffer assertion force
             m_next_buffer_assert = 0;
             //Create and cache a number>string lut
-            if(m_number_string==null) {
-                m_number_string = new List<string>();
-                for(int i=0;i<1201;i++) m_number_string.Add(string.Format("{0,3:###}",i));
-            }            
+            AssertNumberString();
             //Create string builder for stats
             if(m_field_sb==null) m_field_sb = new StringBuilder();
+        }
+
+        /// <summary>
+        /// Asserts the creation of the string list for gc free number to string
+        /// </summary>
+        protected void AssertNumberString() {
+            if(m_number_string!=null) return;
+            m_number_string = new List<string>();
+            for(int i=0;i<1201;i++) m_number_string.Add(string.Format("{0,3:###}",i));                        
         }
 
         /// <summary>
@@ -214,6 +231,9 @@ namespace UnityExt.Core {
             p_number = p_number<0f ? -p_number : p_number;
             p_number = Mathf.Floor(p_number/p_round) * p_round;
             int vi = (int)p_number;
+            #if UNITY_EDITOR
+            AssertNumberString();
+            #endif
             vi = Mathf.Clamp(vi,0,m_number_string.Count-1);
             m_field_sb.Append(m_number_string[vi]);
         }
@@ -272,7 +292,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Executes the loop and collect information.
         /// </summary>
-        virtual protected void Update() {
+        virtual public void OnUpdate() {
             //Assert buffer texture
             AssertBuffer();
             //Frame counter
@@ -283,6 +303,8 @@ namespace UnityExt.Core {
                 int   dv = maxSample-minSample;
                 float r  = Mathf.Clamp01(dv<=0 ? 0f : ((float)(v-minSample)/(float)(dv)));
                 if(autoPlot) Plot(r);
+                //Assertion
+                if(m_field_sb==null) m_field_sb = new StringBuilder();
                 //Clear text buffer
                 m_field_sb.Clear();
                 //Write all information
@@ -297,7 +319,8 @@ namespace UnityExt.Core {
         /// <summary>
         /// DTOR
         /// </summary>
-        protected void OnDestroy() {            
+        override protected void OnDestroy() {            
+            base.OnDestroy();
             if(m_graph_buffer) {
                 if(Application.isPlaying) Destroy(m_graph_buffer); else DestroyImmediate(m_graph_buffer);
             }
