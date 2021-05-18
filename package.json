@@ -6,7 +6,7 @@
   "unity":       "2018.1",
   "dependencies": { 
     "com.unity.nuget.newtonsoft-json": "2.0.0",
-    "com.unityext.system": "2.0.0"
+    "com.unityext.system": "https://github.com/UnityExt/System.git#development"
   },
  "keywords": [
     "unity",
