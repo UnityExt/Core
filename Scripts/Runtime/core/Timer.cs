@@ -54,88 +54,70 @@ namespace UnityExt.Core {
         /// <summary>
         /// Path to be used on the creation of an atomic timer.
         /// </summary>
-        static public string atomicClockPath = Application.persistentDataPath;
+        static public string AtomicClockRoot = $"{Application.persistentDataPath}/unityex/{Application.platform.ToString().ToLower()}/timer/";
+
+        /// <summary>
+        /// Default atomic clock file name
+        /// </summary>
+        static public string AtomicClockfile = "ue-atomic-clock";
 
         /// <summary>
         /// Returns the folder where the atomic clock references are stored.
         /// </summary>
-        static public string atomicClockFolder {
+        static public string AtomicClockPath {
             get {
-                if(AssertAtomicPaths()) return m_clock_atomic_root+"ueac/";
-                return atomicClockPath;
+                string path = AtomicClockRoot.Replace('\\','/').Replace("//","/");                                
+                if(!m_path_checked) if(!Directory.Exists(path)) Directory.CreateDirectory(path);
+                m_path_checked = true;
+                return path;                
             }
         }
-
-        /// <summary>
-        /// Asserts the location of the atomic clock reference files. Return true if all good.
-        /// </summary>
-        /// <returns></returns>
-        static internal bool AssertAtomicPaths() {
-            //Validate clock file root
-            if(string.IsNullOrEmpty(m_clock_atomic_root)) {
-                m_clock_atomic_root = atomicClockPath;
-                m_clock_atomic_root = m_clock_atomic_root.Replace("\\","/");
-                if(!m_clock_atomic_root.EndsWith("/")) m_clock_atomic_root+="/";
-                m_clock_atomic_folder = m_clock_atomic_root+"ueac/";
-            }
-            //Assume all fine
-            m_clock_atomic_allowed = true;
-            //Assert directory to create and test if IO is allowed
-            if(!Directory.Exists(m_clock_atomic_folder)) {
-                try {
-                    m_clock_atomic_allowed = true;
-                    Directory.CreateDirectory(m_clock_atomic_folder);
-                }
-                catch(System.Exception p_err) {
-                    m_clock_atomic_allowed = false;
-                    Debug.LogWarning($"Timer> Failed to create atomic clock root at [{m_clock_atomic_folder}]\n{p_err.Message}");
-                }
-            }
-            return m_clock_atomic_allowed;
-        }
-        static bool   m_clock_atomic_allowed;
-        static string m_clock_atomic_root;
-        static string m_clock_atomic_folder;
+        static private bool m_path_checked = false;
 
         /// <summary>
         /// Creates a temporary file and sample its current timestamp.
         /// </summary>
         /// <param name="p_id">Atomic Clock Id</param>
         /// <returns>DateTime stamp of the atomic clock</returns>
-        static public DateTime GetAtomicTimestamp(string p_id="") {
+        static public DateTime GetAtomicTimestamp(string p_id="") {            
+            bool is_default = string.IsNullOrEmpty(p_id);
+            //File Name
+            string     fn = p_id;            
             //Default file name
-            if(string.IsNullOrEmpty(p_id)) p_id = "__system_time";
-            bool path_success = AssertAtomicPaths();
-            //If not fallback to C# DateTime Now            
-            if(!path_success) return DateTime.UtcNow;
-            //Update/Create th file and sample the last access datetime
-            string   fp = m_clock_atomic_folder+p_id+".clk";            
-            FileInfo fi = new FileInfo(fp);
+            if(is_default) { fn = AtomicClockfile; }            
+            //File Path
+            string fp = AtomicClockPath+fn;
+            //Fetch file info
+            FileInfo fi = new FileInfo(fp);            
             if(!fi.Exists) {
-                File.WriteAllBytes(fp,m_clock_atomic_dummy_data);
+                FileStream fs = File.Open(fp, FileMode.Create, FileAccess.ReadWrite); 
+                //Write a byte and close
+                fs.WriteByte(1);                
+                fs.FlushAsync();
+                fs.Close();
+                fs.Dispose();
             }            
             fi.Refresh();
+            //Return last access
             return fi.CreationTime;
         }        
-        static byte[] m_clock_atomic_dummy_data = new byte[1];
-
+        
         /// <summary>
         /// Clears the atomic clock of a given id.
         /// </summary>
         /// <param name="p_id">Atomic Clock Id</param>
         static public void ClearAtomicTimestamp(string p_id="") {
+            bool is_default = string.IsNullOrEmpty(p_id);
             //Default file name
-            if(string.IsNullOrEmpty(p_id)) p_id = "__system_time";
-            bool path_success = AssertAtomicPaths();
-            if(!path_success) return;
-            //Update/Create th file and sample the last access datetime
-            string   fp = m_clock_atomic_folder+p_id+".clk";            
+            string fn = p_id;
+            if(is_default) { fn = AtomicClockfile; }
+            //File Path
+            string fp = AtomicClockPath+fn;
             FileInfo fi = new FileInfo(fp);
-            if(fi.Exists) {     
-                File.SetCreationTimeUtc(fp,DateTime.UtcNow);
-                fi.Delete();                
-                fi.Refresh();                                
-            }            
+            if(!fi.Exists) return;            
+            File.SetCreationTimeUtc(fp,DateTime.UtcNow);
+            fi.Delete();               
+            fi.Refresh();
         }
 
         /// <summary>
@@ -144,16 +126,20 @@ namespace UnityExt.Core {
         /// <param name="p_id">Atomic Clock Id</param>
         /// <returns>Elapsed timespan of a given atomic block</returns>
         static public TimeSpan GetAtomicClockElapsed(string p_id="") {
-            //Default file name
-            if(string.IsNullOrEmpty(p_id)) p_id = "__system_time";
-            bool path_success = AssertAtomicPaths();
-            if(!path_success) return new TimeSpan(0);
-            string tmp_id = "__current_clock_"+(UnityEngine.Random.value*1000f).ToString("0000000");
-            DateTime t1 = GetAtomicTimestamp(tmp_id);
-            DateTime t0 = GetAtomicTimestamp(p_id);
-            ClearAtomicTimestamp(tmp_id);
+            //Fetch the tmp file information
+            string tmp_fp = AtomicClockPath+tmp_clock_fn;
+            if(tmp_fi == null) { tmp_fi = new FileInfo(tmp_fp); tmp_fs = File.Open(tmp_fp,FileMode.OpenOrCreate); }
+            tmp_fs.WriteByte(1);
+            tmp_fs.Flush();
+            tmp_fi.Refresh();
+            //File Path            
+            DateTime t1 = tmp_fi.LastAccessTime;
+            DateTime t0 = GetAtomicTimestamp(p_id);            
             return t1-t0;
         }
+        static private string tmp_clock_fn = "$sys-clock";
+        static private FileInfo   tmp_fi  = null;
+        static private FileStream tmp_fs  = null;
         
         #endregion
         
@@ -172,8 +158,165 @@ namespace UnityExt.Core {
             return n;
         }
 
+        #region Reflection
+
+        /// <summary>
+        /// Reflection Fields Flags
+        /// </summary>
+        static System.Reflection.BindingFlags m_rfl_flags = System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.InvokeMethod;
+
+        /// <summary>
+        /// Creates a Timer and Invokes by name the method of the given target using Reflection.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before calling the method</param>
+        /// <param name="p_target">Object containing the method</param>
+        /// <param name="p_method">Method name</param>
+        /// <param name="p_args">Method args</param>
+        /// <returns>Timer running the delay</returns>
+        static public Timer Invoke(string p_id,float p_delay,object p_target,string p_method,params object[] p_args) {
+            if(p_target == null)               { Debug.LogWarning("Timer> Invoke Failed / Null Target");    return Delay(p_delay); } 
+            if(string.IsNullOrEmpty(p_method)) { Debug.LogWarning("Timer> Invoke Failed / Invalid Method"); return Delay(p_delay); }
+            Type type = p_target is Type ? (Type)p_target : p_target.GetType();
+            System.Reflection.MethodInfo m = type.GetMethod(p_method,m_rfl_flags);
+            if(m==null) { Debug.LogWarning($"Timer> Invoke Failed / Method [{p_method}] not found!"); return Delay(p_delay); }
+            object target = p_target is Type ? null : p_target;
+            return Create(p_id,p_delay,1, TimerType.Unity,null,delegate(Timer t) { m.Invoke(t,p_args); },null);
+        }
+
+        /// <summary>
+        /// Creates a Timer and Invokes by name the method of the given target using Reflection.
+        /// </summary>        
+        /// <param name="p_delay">Delay before calling the method</param>
+        /// <param name="p_target">Object containing the method</param>
+        /// <param name="p_method">Method name</param>
+        /// <param name="p_args">Method args</param>
+        /// <returns>Timer running the delay</returns>
+        static public Timer Invoke(float p_delay,object p_target,string p_method,params object[] p_args) { return Invoke("timer-invoke",p_delay,p_target,p_method,p_args); }
+
+        /// <summary>
+        /// Creates a Timer and Invokes by name the static method of the given type.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before calling the method</param>        
+        /// <param name="p_method">Method name</param>
+        /// <param name="p_args">Method args</param>
+        /// <returns>Timer running the delay</returns>
+        static public Timer Invoke<T>(string p_id,float p_delay,string p_method,params object[] p_args) { return Invoke(p_id,p_delay,typeof(T),p_method,p_args); }
+
+        /// <summary>
+        /// Creates a Timer and Invokes by name the static method of the given type.
+        /// </summary>        
+        /// <param name="p_delay">Delay before calling the method</param>        
+        /// <param name="p_method">Method name</param>
+        /// <param name="p_args">Method args</param>
+        /// <returns>Timer running the delay</returns>
+        static public Timer Invoke<T>(float p_delay,string p_method,params object[] p_args) { return Invoke<T>("timer-invoke-static",p_delay,p_method,p_args); }
+
+        /// <summary>
+        /// Creates a Timer and Invokes the passed delegate
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before calling the method</param>        
+        /// <param name="p_delegate">Delegate Function to be called</param>
+        /// <param name="p_args">Delegate arguments</param>
+        /// <returns>Timer running the delay</returns>
+        static public Timer Invoke(string p_id,float p_delay,Delegate p_delegate,params object[] p_args) {
+            if(p_delegate == null) { Debug.LogWarning("Timer> Invoke Failed / Null Delegate"); return Delay(p_delay); }                        
+            return Create(p_id,p_delay,1, TimerType.Unity,null,delegate(Timer t) { p_delegate.DynamicInvoke(p_args); },null);
+        }
+
+        /// <summary>
+        /// Creates a Timer and Invokes the passed delegate
+        /// </summary>        
+        /// <param name="p_delay">Delay before calling the method</param>        
+        /// <param name="p_delegate">Delegate Function to be called</param>
+        /// <param name="p_args">Delegate arguments</param>
+        /// <returns>Timer running the delay</returns>
+        static public Timer Invoke(float p_delay,Delegate p_delegate,params object[] p_args) {
+            if(p_delegate == null) { Debug.LogWarning("Timer> Invoke Failed / Null Delegate"); return Delay(p_delay); }                        
+            return Create($"timer-invoke-delegate",p_delay,1, TimerType.Unity,null,delegate(Timer t) { p_delegate.DynamicInvoke(p_args); },null);
+        }
+
+        /// <summary>
+        /// Creates a timer that set a given property of an object after the delay passed.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before changing the property</param>
+        /// <param name="p_target">Target object</param>
+        /// <param name="p_property">Property name</param>
+        /// <param name="p_value">Property value</param>
+        /// <returns>Running timer</returns>
+        static public Timer Set(string p_id,float p_delay,object p_target,string p_property,object p_value) {
+            if(p_target == null)                 { Debug.LogWarning("Timer> Set Failed / Null Target");      return Delay(p_delay); } 
+            if(string.IsNullOrEmpty(p_property)) { Debug.LogWarning("Timer> Set Failed / Invalid Property"); return Delay(p_delay); }
+            Type type = p_target is Type ? (Type)p_target : p_target.GetType();
+            System.Reflection.MemberInfo[] ml = type.GetMember(p_property,m_rfl_flags);
+            if(ml.Length<=0) { Debug.LogWarning($"Timer> Set Failed / Property [{p_property}] not found!"); return Delay(p_delay); }
+            System.Reflection.MemberInfo m = ml[0];
+            object target = p_target is Type ? null : p_target;
+            System.Reflection.FieldInfo    fi = m as System.Reflection.FieldInfo;
+            System.Reflection.PropertyInfo pi = m as System.Reflection.PropertyInfo;            
+            return 
+            Create(p_id,p_delay,1, TimerType.Unity,null,
+            delegate(Timer t) { 
+                if(fi!=null){ fi.SetValue(t,p_value); return; }
+                if(pi!=null){ pi.SetValue(t,p_value); return; }
+            },null);
+        }
+
+        /// <summary>
+        /// Creates a timer that set a given property of an object after the delay passed.
+        /// </summary>        
+        /// <param name="p_delay">Delay before changing the property</param>
+        /// <param name="p_target">Target object</param>
+        /// <param name="p_property">Property name</param>
+        /// <param name="p_value">Property value</param>
+        /// <returns>Running timer</returns>
+        static public Timer Set(float p_delay,object p_target,string p_property,object p_value) { return Set("timer-set",p_delay,p_target,p_property,p_value); }        
+
+        /// <summary>
+        /// Creates a timer that set a given static property of a Type.
+        /// </summary>
+        /// <param name="p_id">Timer Id</param>
+        /// <param name="p_delay">Delay before changing the property</param>        
+        /// <param name="p_property">Property name</param>
+        /// <param name="p_value">Property value</param>
+        /// <returns>Running timer</returns>
+        static public Timer Set<T>(string p_id,float p_delay,string p_property,object p_value) { return Set(p_id,p_delay,typeof(T),p_property,p_value); }
+
+        /// <summary>
+        /// Creates a timer that set a given static property of a Type.
+        /// </summary>        
+        /// <param name="p_delay">Delay before changing the property</param>        
+        /// <param name="p_property">Property name</param>
+        /// <param name="p_value">Property value</param>
+        /// <returns>Running timer</returns>
+        static public Timer Set<T>(float p_delay,string p_property,object p_value) { return Set("timer-set-static",p_delay,typeof(T),p_property,p_value); }
+
+        #endregion
+
+        #region Delay
+
+        /// <summary>
+        /// Creates an executes a timer for 'await' scenarios.
+        /// </summary>
+        /// <param name="p_id">Id of the timer</param>
+        /// <param name="p_duration">How much time to wait</param>
+        /// <returns>Executing Timer</returns>
+        static public Timer Delay(string p_id,float p_duration) { Timer n = Create(p_id,p_duration,1, TimerType.Unity,null,null,null); n.Start(0f); return n; }
+
+        /// <summary>
+        /// Creates an executes a timer for 'await' scenarios.
+        /// </summary>        
+        /// <param name="p_duration">How much time to wait</param>
+        /// <returns>Executing Timer</returns>
+        static public Timer Delay(float p_duration) { Timer n = Create("timer-delay",p_duration,1, TimerType.Unity,null,null,null); n.Start(0f); return n; }
+
+        #endregion
+
         #region Run
-        
+
         /// <summary>
         /// Creates and executes a Timer with a per-execution callback. If no 'duration' is specified the Timer runs forever, if no 'count' is specified the Timer loops 'duration' forever.
         /// </summary>
@@ -521,13 +664,13 @@ namespace UnityExt.Core {
         /// Creates a new Timer instance.
         /// </summary>
         /// <param name="p_id">Id of the Timer.</param>
-        /// <param name="p_mode">Clock time tracking mode.</param>
-        public Timer(string p_id,TimerType p_mode = TimerType.System) : base(p_id, ActivityContext.Thread) { CreateTimer(0f,0,p_mode); }
+        /// <param name="p_type">Clock time tracking mode.</param>
+        public Timer(string p_id,TimerType p_type = TimerType.System) : base(p_id, p_type == TimerType.System ? ActivityContext.Thread : ActivityContext.Update) { CreateTimer(0f,0,p_type); }
         /// <summary>
         /// Creates a new Timer instance.
         /// </summary>        
         /// <param name="p_type">Clock time tracking mode.</param>
-        public Timer(TimerType p_type = TimerType.System) : base("", ActivityContext.Thread) { CreateTimer(0f,0,p_type); }                
+        public Timer(TimerType p_type = TimerType.System) : base("",p_type == TimerType.System ? ActivityContext.Thread : ActivityContext.Update) { CreateTimer(0f,0,p_type); }                
 
         #endregion
 

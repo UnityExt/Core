@@ -109,11 +109,27 @@ namespace UnityExt.Core {
             /// <summary>
             /// Unity Calls
             /// </summary>
-            protected void Awake()       { handler.Awake();       }
-            internal void Start()        { handler.Start();       }
-            internal void Update()       { handler.Update();      }            
-            internal void FixedUpdate()  { handler.FixedUpdate(); }            
-            internal void LateUpdate()   { handler.LateUpdate();  }
+            protected void Awake()       { 
+                handler.Awake();       
+            }
+            internal void Start()        { 
+                handler.Start();       
+            }
+            internal void Update()       { 
+                //if(UnityEngine.Profiling.Profiler.enabled) UnityEngine.Profiling.Profiler.BeginSample("Activity.Update");
+                handler.Update();      
+                //if(UnityEngine.Profiling.Profiler.enabled) UnityEngine.Profiling.Profiler.EndSample();
+            }            
+            internal void FixedUpdate()  { 
+                //if(UnityEngine.Profiling.Profiler.enabled) UnityEngine.Profiling.Profiler.BeginSample("Activity.FixedUpdate");
+                handler.FixedUpdate(); 
+                //if(UnityEngine.Profiling.Profiler.enabled) UnityEngine.Profiling.Profiler.EndSample();
+            }            
+            internal void LateUpdate()   { 
+                //if(UnityEngine.Profiling.Profiler.enabled) UnityEngine.Profiling.Profiler.BeginSample("Activity.LateUpdate");
+                handler.LateUpdate();  
+                //if(UnityEngine.Profiling.Profiler.enabled) UnityEngine.Profiling.Profiler.EndSample();
+            }
             internal void OnDestroy()    { if(m_handler!=null) { m_handler.Clear(); m_handler=null; }  }
 
             #if UNITY_EDITOR
@@ -183,12 +199,14 @@ namespace UnityExt.Core {
         [CustomEditor(typeof(Manager))]
         public class ManagerInspector : Editor {
 
+            /*
             /// <summary>
             /// CTOR.
             /// </summary>
             protected void OnEnable() {
                 
             }
+            //*/
 
             /// <summary>
             /// GUI
