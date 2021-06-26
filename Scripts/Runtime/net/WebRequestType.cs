@@ -64,6 +64,10 @@ namespace UnityExt.Core {
         /// The PATCH method is used to apply partial modifications to a resource.
         /// </summary>
         public const string Patch   = "PATCH";   
+        /// <summary>
+        /// 
+        /// </summary>
+        public const string Create   = "CREATE";   
     }
     #endregion
 
