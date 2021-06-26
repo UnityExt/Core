@@ -6,6 +6,8 @@ using UnityEngine.Scripting;
 using System.Collections.Generic;
 using System.Text;
 
+#pragma warning disable UNT0017
+
 namespace UnityExt.Core {
 
     /// <summary>
