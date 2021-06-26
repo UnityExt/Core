@@ -140,10 +140,12 @@ namespace UnityExt.Core {
         /// <param name="p_indexer">Array indexer, can be an int or string, if an empty string is provided its the auto indexed value '[]'</param>
         /// <param name="p_var">Variable Name</param>
         /// <param name="p_value">BinaryData to be converted into base64</param>        
-        public void AddBase64(object p_indexer,string p_var,byte[] p_value) {
+        public void AddBase64(object p_indexer,string p_var,object p_value) {
+            if(p_value==null) return;
             Base64Serializer s = new Base64Serializer();
             StringBuilder sb = new StringBuilder();
-            s.Serialize(p_value,sb);
+            if(p_value is byte[]) s.Serialize((byte[])p_value,sb);
+            else                  s.Serialize(p_value.ToString(),sb);
             Add(p_indexer,p_var,sb.ToString());
         }
 
@@ -152,7 +154,7 @@ namespace UnityExt.Core {
         /// </summary>        
         /// <param name="p_var">Variable Name</param>
         /// <param name="p_value">BinaryData to be converted into base64</param>        
-        public void AddBase64(string p_var,byte[] p_value) { AddBase64(null,p_var,p_value); }
+        public void AddBase64(string p_var,object p_value) { AddBase64(null,p_var,p_value); }
 
         /// <summary>
         /// Set the query string variable-value pair with a query-string compliant indexer.
@@ -356,6 +358,8 @@ namespace UnityExt.Core {
                     case FieldType.Base64:    WriteBase64(); break;
                     case FieldType.Json:      WriteJson  (); break;
                 }
+                //Reset reader position
+                stream.Position=0;
             }
             static private byte[] m_empty_bytes = new byte[0];
 
@@ -383,7 +387,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Reference to the stream containing this body data.
         /// </summary>
-        public Stream stream { get; internal set; }
+        public Stream stream { get; set; }
 
         /// <summary>
         /// Size of this content in bytes.
@@ -436,7 +440,7 @@ namespace UnityExt.Core {
         public void AddPNG    (string p_name,byte[]       p_value,string p_filename="") { AddField(FieldType.ImagePNG, null, p_name,p_value,p_filename); }        
         public void AddPNG    (string p_name,Texture2D    p_value,string p_filename="") { AddField(FieldType.ImagePNG, null, p_name,p_value,p_filename); }
 
-        internal void AddFields(string p_name,System.Collections.IList p_values) {
+        public void AddFields(string p_name,System.Collections.IList p_values) {
             if(p_values==null) return;
             int c = p_values.Count;
             if(c<=0)return;
@@ -447,7 +451,7 @@ namespace UnityExt.Core {
             }
         }
 
-        internal void AddFields(string p_name,System.Collections.IDictionary p_values) {
+        public void AddFields(string p_name,System.Collections.IDictionary p_values) {
             if(p_values==null) return;
             int c = p_values.Count;
             if(c<=0)return;            

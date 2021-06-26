@@ -734,20 +734,28 @@ namespace UnityExt.Core {
                     delegate(Activity a) {
                         //In case of cancel
                         if(state == WebRequestState.Cancel) return false;
+                        //Flag telling the stream in the request was made before
+                        bool is_custom_stream = true;
                         //State machine step
                         switch(init_step) {
                             //Initialize
                             case 0: {   
                                 //Assert Request instance
                                 if(request==null) request = new HttpRequest();
-                                Stream ss = buffer_mode == WebRequestAttrib.FileBuffer ? (Stream)File.Open(temp_request_fp, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite) : (Stream)new MemoryStream();
-                                request.body.Initialize(ss);
+                                //If the body doesnt have any stream
+                                if(request.body.stream==null) {
+                                    is_custom_stream = false;
+                                    Stream ss = buffer_mode == WebRequestAttrib.FileBuffer ? (Stream)File.Open(temp_request_fp, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite) : (Stream)new MemoryStream();
+                                    request.body.Initialize(ss);
+                                }                                
                                 //Flush non unity
                                 init_step = 1;
                             }
                             break;
                             //Flush non-unity fields (per frame)
-                            case 1: {    
+                            case 1: {
+                                //If its a custom stream just skip the form generation
+                                if(is_custom_stream) { init_step = 3; form_copy = Timer.Delay(1f / 60f); break; }
                                 //Keep consuming fields to flush
                                 if(request.body.FlushStep(false)) break;
                                 //Set the step to 'unity' flush
