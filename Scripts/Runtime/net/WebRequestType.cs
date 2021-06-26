@@ -317,7 +317,7 @@ namespace UnityExt.Core.Net {
             /// </summary>
             /// <param name="p_file_mode"></param>
             public void SetBaseStream(bool p_file_mode) {
-                if(p_file_mode) { stream = File.Create($"{WebRequest.GetTempFileName(name)}"); return; }
+                if(p_file_mode) { stream = File.Create($"{WebRequest.GetTempFilePath(name)}"); return; }
                 stream = new MemoryStream();
             }
 
