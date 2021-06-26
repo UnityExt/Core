@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Net {
 
     #region class WebCacheEntry
     /// <summary>

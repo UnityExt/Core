@@ -5,7 +5,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.IO {
 
     public class ObjectStream {
         /// <summary>

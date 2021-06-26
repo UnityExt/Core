@@ -9,7 +9,7 @@ using NFormatting             = Newtonsoft.Json.Formatting;
 using NDateParseHandling      = Newtonsoft.Json.DateParseHandling;
 
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.IO {
 
 
     /// <summary>

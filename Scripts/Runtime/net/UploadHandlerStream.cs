@@ -1,10 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
+﻿using System.IO;
 using System.Text;
-using System.Threading.Tasks;
-using UnityEngine;
 using UnityEngine.Networking;
 using NetMultipartFormDataContent = System.Net.Http.MultipartFormDataContent;
 using NetHttpContent              = System.Net.Http.HttpContent;
@@ -14,7 +9,7 @@ using NetStringContent            = System.Net.Http.StringContent;
 using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Net {
     
     #region class UploadHandlerStream
     /// <summary>

@@ -14,7 +14,7 @@ using NetStringContent            = System.Net.Http.StringContent;
 using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Net {
     
         #region class DownloadHandlerStream
         /// <summary>

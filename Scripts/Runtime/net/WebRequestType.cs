@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
+using UnityExt.Core.IO;
 using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -14,7 +14,7 @@ using NetStringContent            = System.Net.Http.StringContent;
 using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Net {
     
     #region class HttpMethod
     /// <summary>

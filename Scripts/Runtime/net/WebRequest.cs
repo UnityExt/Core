@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using UnityExt.Core.IO;
 using UnityEngine;
 using UnityEngine.Networking;
 using NetMultipartFormDataContent = System.Net.Http.MultipartFormDataContent;
@@ -14,7 +11,7 @@ using NetStringContent            = System.Net.Http.StringContent;
 using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
 
-namespace UnityExt.Core {
+namespace UnityExt.Core.Net {
 
     #region enum WebRequestState
     /// <summary>
