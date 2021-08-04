@@ -54,6 +54,15 @@ namespace UnityExt.Core.IO {
         /// Compress using Deflate Fast
         /// </summary>
         DeflateFast = (1<<11),
+        /*=== Object Bits ===*/
+        /// <summary>
+        /// Serialize in binary mode
+        /// </summary>
+        BinaryMode  = (1<<12),
+        /// <summary>
+        /// Serialize in text mode
+        /// </summary>
+        TextMode    = (1<<13),
     }
     #endregion
 
@@ -281,6 +290,8 @@ namespace UnityExt.Core.IO {
             mode = p_mode;
             //Initialize the descriptor
             dsc = new SerializerDesc() { attribs = p_attribs, input = p_input, password = p_password, container = p_container, callback = p_callback };
+            //If compressed need to force close so buffer is emptied
+            if((dsc.attribs & (SerializerAttrib.GZip | SerializerAttrib.GZipFast | SerializerAttrib.Deflate | SerializerAttrib.DeflateFast)) != 0) dsc.attribs |= SerializerAttrib.CloseStream;
             //Store descriptor
             descriptor = dsc;
             //If 'async' start activity and return nothing
