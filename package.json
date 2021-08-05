@@ -5,8 +5,7 @@
   "description": "Unity API extension, core package. Contains the most basic set of tools that all projects needs, including child packages of the UnityExt suite.",
   "unity":       "2018.1",
   "dependencies": { 
-    "com.unity.nuget.newtonsoft-json": "2.0.0",
-    "com.unityext.system": "2.0.0"
+    "com.unity.nuget.newtonsoft-json": "2.0.0",    
   },
  "keywords": [
     "unity",
