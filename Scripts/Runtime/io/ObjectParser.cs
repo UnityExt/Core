@@ -476,7 +476,7 @@ namespace UnityExt.Core.IO {
         private List<Type>                  m_types;
         private List<string>                m_names;
         private List<object>                m_refs;
-        private Dictionary<int,int>         m_refs_index;        
+        private Dictionary<object,int>      m_refs_index;          
         private IObjectParserTokenHandler   m_handler;
         private object                      m_read_result;
 
@@ -516,7 +516,7 @@ namespace UnityExt.Core.IO {
             m_types = new List<Type>   (p_capacity/10);
             m_names = new List<string> (p_capacity/10);
             m_refs  = new List<object> (p_capacity);
-            m_refs_index = new Dictionary<int, int>(p_capacity);
+            m_refs_index = new Dictionary<object, int>(p_capacity);
             //Initialize internals
             m_types.Add(null);            
             m_names.Add(null);
@@ -548,7 +548,8 @@ namespace UnityExt.Core.IO {
             m_types        = new List<Type>   (p_capacity/10);
             m_names        = new List<string> (p_capacity/10);
             m_refs         = new List<object> (p_capacity);
-            m_refs_index   = new Dictionary<int, int>(p_capacity);            
+            //When reading we assume references are all defined beforehand
+            m_refs_index   = null;//new Dictionary<object, int>(p_capacity);            
             m_stack_buffer_top = 0;
             m_read_result  = null;
             //Initialize internals
@@ -1211,17 +1212,21 @@ namespace UnityExt.Core.IO {
         /// <param name="p_type">Value type either from Array/Dictionary or value itself.</param>
         /// <param name="p_name">Property/Field name if any</param>
         /// <param name="p_value">Objet reference.</param>
-        public int NewReference(Type p_type,object p_value,bool p_struct) {
+        public int NewReference(Type p_type,object p_value,bool p_struct) {         
+            //When reading from a previously parsed dataset all object indexes are defined so no need to update cache
+            bool use_cache = m_refs_index!=null;
             object v       = p_value;
             Type   v_type  = p_type==null ? (v==null ? null : v.GetType()) : p_type;            
-            int    ref_idx = GetReferenceIndex(v);
-            if(ref_idx>=0) return ref_idx;
+            int    ref_idx = use_cache ? GetReferenceIndex(v) : -1;
+            if(ref_idx >= 0) { return ref_idx; }
             int type_idx = m_types.IndexOf(v_type);
-            ref_idx = m_refs.Count;
-            int hc  = v.GetHashCode();
-            if(p_struct) hc = v_type.GetHashCode();
-            //Stores the index to avoid reference loop
-            m_refs_index[hc] = ref_idx;            
+            ref_idx      = m_refs.Count;            
+            //Stores the index to avoid reference loop (only when writing)
+            if(use_cache) {
+                object rk  = p_struct ? v_type : v;                
+                m_refs_index[rk] = ref_idx;                
+            }            
+            //Adds the reference to the pool
             m_refs.Add(v);
             OnNewReference(this,type_idx,ref_idx);
             if(m_handler!=null) m_handler.OnNewReference(this,type_idx,ref_idx);
@@ -1280,12 +1285,14 @@ namespace UnityExt.Core.IO {
         /// Give an object it returns the instance index in the reference list cache.
         /// </summary>        
         public int GetReferenceIndex(object p_value) {
-            if(p_value==null) return 0;
+            if(p_value==null)       return  0;
+            //If ref hashtable is null we always add the reference into the pool
+            if(m_refs_index==null)  return -1;
             Type         vt      = p_value.GetType();
             TypeCategory vt_mode = GetTypeCategoryCached(vt);
             if(vt_mode == TypeCategory.Struct) { p_value = vt; }
-            int hc = p_value.GetHashCode();
-            return m_refs_index.ContainsKey(hc) ? m_refs_index[hc] : -1;
+            object rk = p_value;
+            return m_refs_index.ContainsKey(rk) ? m_refs_index[rk] : -1;
         }
 
         /// <summary>
