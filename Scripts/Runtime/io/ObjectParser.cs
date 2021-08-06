@@ -593,8 +593,9 @@ namespace UnityExt.Core.IO {
             EvaluateMembers(members,p_type_idx,p_name_idx,p_ref_idx,v,p_struct);
             //Evaluate if collection
             if(v is IDictionary) EvaluateCollection((IDictionary)v,p_type_idx,p_name_idx,p_ref_idx); else
-            if(v is IEnumerable) EvaluateCollection((IEnumerable)v,p_type_idx,p_name_idx,p_ref_idx);            
+            if(v is IEnumerable) EvaluateCollection((IEnumerable)v,p_type_idx,p_name_idx,p_ref_idx);                        
         }
+        
 
         /// <summary>
         /// Returns to the previous processing state.
@@ -607,33 +608,35 @@ namespace UnityExt.Core.IO {
             OnPop(this,p_type_idx,p_name_idx,p_ref_idx,current,p_struct);
             if(m_handler!=null) m_handler.OnPop(this,p_type_idx,p_name_idx,p_ref_idx,current,p_struct);
         }
-
-
+        
         /// <summary>
         /// Stack push a cached instance
         /// </summary>
         /// <param name="p_ref_idx"></param>
         public void Push(int p_ref_idx) {
             object v = GetReference(p_ref_idx);
-            if(v==null) return;
+            if(v == null) return;            
             //Stack the reference
             m_stack.Push(current);
             //Stack management
             parent  = current;
-            current = v;            
+            current = v;         
+            //If result is null first push is the container object
+            if(m_read_result==null)m_read_result = v;
             //Stack the value buffer to accumulate and apply
+            //StackBuffer data is also memory pooled
             if(m_stack_buffer_top >= m_stack_buffer.Count) m_stack_buffer.Add(new StackBuffer());            
             m_stack_buffer[m_stack_buffer_top].Clear();            
             m_stack_buffer_top++;
         }
-
+        
         /// <summary>
         /// Pops the current state and apply the result on its parent.
         /// </summary>
         /// <param name="p_name_idx"></param>
         public void Pop(int p_name_idx) {
-            //If stack is empty, ignore
-            if(m_stack.Count<=0) return;
+            //If stack is empty should not proceed
+            if(m_stack.Count <= 0) { return; }
             //Result
             object res = current;
             //Stack management
@@ -641,9 +644,9 @@ namespace UnityExt.Core.IO {
             parent  = m_stack.Count<=0 ? null : m_stack.Peek();            
             //Pop the buffer stack
             m_stack_buffer_top = Math.Max(m_stack_buffer_top-1,0);
-            //Assign the result
+            //Assign the result into parent container (pop -> current)
             Assign(p_name_idx,res);
-        }
+        }        
         #endregion
 
         #region Assign
@@ -660,7 +663,7 @@ namespace UnityExt.Core.IO {
             if(v_buffer!=null)v_buffer.Add(p_value);
             //Keep adding until 2 for dictionaries
             if(v is IDictionary) if(v_buffer.valueCount<2) return;
-            //If no name 'currrent' is a Collection
+            //If no name 'current' is a Collection
             if(string.IsNullOrEmpty(v_name)) {
                 if(v is IDictionary) { AssignDictionary();  } else
                 if(v is IEnumerable) { AssignCollection();  }                
@@ -668,7 +671,7 @@ namespace UnityExt.Core.IO {
             //If 'name' then its a field/property
             else 
             if(v!=null) {                                
-                Type ctn_type  = v.GetType();
+                Type ctn_type = v.GetType();
                 MemberInfo[] mi_list = GetMembersByNameCached(ctn_type,v_name);
                 if(mi_list.Length>0) { 
                     MemberInfo mi = mi_list[0];
@@ -682,8 +685,8 @@ namespace UnityExt.Core.IO {
             }
             //Clear for next operations
             if(v_buffer!=null)v_buffer.ClearValues();
-            //Keep assigning the read result as the last one is the desired result
-            m_read_result = p_value;
+            //If result is null there was no first push, thus data is a primitive
+            if(m_read_result==null)m_read_result = p_value;
         }
 
         /// <summary>
