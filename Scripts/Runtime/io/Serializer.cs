@@ -121,6 +121,236 @@ namespace UnityExt.Core.IO {
     /// </summary>
     public abstract class Serializer : Activity {
 
+        #region static 
+
+        #region Activity InternalTask
+        /// <summary>
+        /// Helper to perform serialization/deserialization on streams.
+        /// </summary>        
+        static protected Activity InternalTask(bool p_async,SerializerMode p_mode,Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {
+            Stream src = p_from;
+            Stream dst = p_to;
+            if(src == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            if(dst == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            bool is_srl = p_mode == SerializerMode.Serialize;
+            Stream ss = is_srl ? dst : src;
+            ss = GetStream(ss,p_password,p_mode,p_attribs);
+            if(ss  == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            Stream cp_src = is_srl ? src : ss;
+            Stream cp_dst = is_srl ? ss  : dst;
+            if(p_async) {
+                System.Threading.Tasks.Task copy_tsk = cp_src.CopyToAsync(cp_dst);
+                Activity task =
+                Activity.Run(
+                delegate(Activity a) {
+                    if(copy_tsk==null)                            { if(p_callback!=null) p_callback(); return false; }
+                    if(copy_tsk.IsFaulted || copy_tsk.IsCanceled) { if(p_callback!=null) p_callback(); return false; }
+                    if(!copy_tsk.IsCompleted) return true;
+                    cp_dst.Flush();
+                    cp_dst.Close(); 
+                    if((p_attribs & SerializerAttrib.CloseStream)!=0) cp_src.Close();
+                    if(p_callback!=null) p_callback();
+                    return false;
+                });
+                task.id = "serializer-task";
+                return task;
+            }
+            else {
+                cp_src.CopyTo(cp_dst);
+                cp_dst.Flush();
+                cp_dst.Close(); 
+                if((p_attribs & SerializerAttrib.CloseStream)!=0) cp_src.Close();
+            }
+            return null;
+        }
+        #endregion
+
+        #region Serialize
+        /// <summary>
+        /// Perform a serialization operation between the two streams.
+        /// It applies the Compression,Encryption and Base64 steps available in other modes.
+        /// </summary>
+        /// <param name="p_from">Source Stream</param>
+        /// <param name="p_to">Destination Stream</param>
+        /// <param name="p_password">Password for encryption</param>
+        /// <param name="p_attribs">Serialization attributes</param>
+        static public void Serialize(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None) { InternalTask(false, SerializerMode.Serialize,p_from,p_to,p_password,p_attribs,null); }
+        static public void Serialize(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None) { InternalTask(false, SerializerMode.Serialize,p_from,p_to,null      ,p_attribs,null); }
+        static public void Serialize(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); InternalTask(false, SerializerMode.Serialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public void Serialize(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); InternalTask(false, SerializerMode.Serialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
+
+        /// <summary>
+        /// Perform a serialization operation between the two streams.
+        /// It applies the Compression,Encryption and Base64 steps available in other modes.
+        /// </summary>
+        /// <param name="p_from">Source Stream</param>
+        /// <param name="p_to">Destination Stream</param>
+        /// <param name="p_password">Password for encryption</param>
+        /// <param name="p_attribs">Serialization attributes</param>
+        /// <param name="p_callback">Callback called upon finishing</param>
+        /// <returns>Running Activity performing the serialization (awaitable)</returns>
+        static public Activity SerializeAsync(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { return InternalTask(true, SerializerMode.Serialize,p_from,p_to,p_password,p_attribs,p_callback); }
+        static public Activity SerializeAsync(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { return InternalTask(true, SerializerMode.Serialize,p_from,p_to,null      ,p_attribs,p_callback); }
+        static public Activity SerializeAsync(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Serialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public Activity SerializeAsync(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Serialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
+        #endregion
+
+        #region Deserialize
+        /// <summary>
+        /// Perform a deserialization operation between the two streams.
+        /// It reversibly applies the Compression,Encryption and Base64 steps available in other modes.
+        /// </summary>
+        /// <param name="p_from">Source Stream</param>
+        /// <param name="p_to">Destination Stream</param>
+        /// <param name="p_password">Password for encryption</param>
+        /// <param name="p_attribs">Serialization attributes</param>
+        static public void Deserialize(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None) {  InternalTask(false, SerializerMode.Deserialize,p_from,p_to,p_password,p_attribs,null); }
+        static public void Deserialize(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None) {  InternalTask(false, SerializerMode.Deserialize,p_from,p_to,null      ,p_attribs,null); }
+        static public void Deserialize(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); InternalTask(false, SerializerMode.Deserialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public void Deserialize(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); InternalTask(false, SerializerMode.Deserialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
+
+        /// <summary>
+        /// Perform a serialization operation between the two streams.
+        /// It applies the Compression,Encryption and Base64 steps available in other modes.
+        /// </summary>
+        /// <param name="p_from">Source Stream</param>
+        /// <param name="p_to">Destination Stream</param>
+        /// <param name="p_password">Password for encryption</param>
+        /// <param name="p_attribs">Serialization attributes</param>
+        /// <param name="p_callback">Callback called upon finishing</param>
+        /// <returns>Running Activity performing the serialization (awaitable)</returns>
+        static public Activity DeserializeAsync(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {  return InternalTask(true, SerializerMode.Deserialize,p_from,p_to,p_password,p_attribs,p_callback); }
+        static public Activity DeserializeAsync(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {  return InternalTask(true, SerializerMode.Deserialize,p_from,p_to,null      ,p_attribs,p_callback); }
+        static public Activity DeserializeAsync(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public Activity DeserializeAsync(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
+        #endregion
+
+        #region Stream Pipeline
+        /// <summary>
+        /// Returns the final stream to be written
+        /// </summary>
+        /// <returns></returns>
+        static protected Stream GetStream(Stream p_stream,string p_password,SerializerMode p_mode,SerializerAttrib p_attribs) {            
+            //Stream Pipeline
+            Stream ss = p_stream;                                    
+            //If no stream and container isn' then error
+            if(ss==null) return null;
+            //Next Stream
+            Stream ns;
+            //Base64 Stream
+            ns = PipeBase64Conversion(ss,p_mode,p_attribs ); if(ns != null) ss = ns;
+            //Encryption w/ password
+            ns = PipeEncryption      (ss,p_mode,p_password); if(ns != null) ss = ns;
+            //Compression Streams
+            ns = PipeCompression     (ss,p_mode,p_attribs ); if(ns != null) ss = ns;            
+            //Return final stream
+            return ss;
+        }
+
+        #region PipeFile
+        /// <summary>
+        /// Pipe a FileStream if a valid path is provided
+        /// </summary>
+        /// <param name="p_path"></param>
+        /// <param name="p_attribs"></param>
+        /// <returns></returns>
+        static protected Stream PipeFile(string p_path,SerializerMode p_mode,SerializerAttrib p_attribs) {                        
+            string file_path = p_path;
+            if(string.IsNullOrEmpty(file_path)) return null;
+            //Create FileStream if file-path
+            if(p_mode == SerializerMode.Serialize)   return File.Create  (file_path);
+            if(p_mode == SerializerMode.Deserialize) return File.OpenRead(file_path);
+            return null;
+        }
+        #endregion
+
+        #region Stream PipeCompression
+        /// <summary>
+        /// Pipe a compression stream around the passed stream
+        /// </summary>
+        /// <param name="p_stream">Stream to be compressed</param>
+        /// <returns>Compression Stream</returns>
+        static protected Stream PipeCompression(Stream p_stream,SerializerMode p_mode,SerializerAttrib p_attribs) {
+            Stream ss = p_stream;
+            //Invalid stream
+            if(ss==null) return null;            
+            //Detect compression level Off | Fast | Optimal
+            System.IO.Compression.CompressionLevel compression_level = CompressionLevel.NoCompression;
+            //Select the enum
+            if((p_attribs & (SerializerAttrib.GZip     | SerializerAttrib.Deflate))     != 0) compression_level = CompressionLevel.Optimal;
+            if((p_attribs & (SerializerAttrib.GZipFast | SerializerAttrib.DeflateFast)) != 0) compression_level = CompressionLevel.Fastest;
+            //Skip if off
+            if(compression_level == CompressionLevel.NoCompression) return null;
+            //Check compression mode
+            SerializerAttrib compression_type  = SerializerAttrib.None;
+            if((p_attribs & (SerializerAttrib.GZip     | SerializerAttrib.GZipFast))     != 0) compression_type  = SerializerAttrib.GZip;
+            if((p_attribs & (SerializerAttrib.Deflate  | SerializerAttrib.DeflateFast))  != 0) compression_type  = SerializerAttrib.Deflate;
+            //Skip if none
+            if(compression_type == SerializerAttrib.None) return null;
+            //Check compression mode
+            System.IO.Compression.CompressionMode  compression_mode = p_mode == SerializerMode.Serialize ? System.IO.Compression.CompressionMode.Compress : System.IO.Compression.CompressionMode.Decompress;
+            //Generate the appropriate stream
+            switch(compression_type) {
+                case SerializerAttrib.GZip:    return compression_mode == CompressionMode.Compress ? new GZipStream   (ss,compression_level) : new GZipStream   (ss,compression_mode);
+                case SerializerAttrib.Deflate: return compression_mode == CompressionMode.Compress ? new DeflateStream(ss,compression_level) : new DeflateStream(ss,compression_mode);
+            }
+            return null;
+        }
+        #endregion
+
+        #region Stream PipeEncryption
+        /// <summary>
+        /// Pipe an encryption stream around the passed stream.
+        /// </summary>
+        /// <param name="p_stream">Stream to be encrypted.</param>
+        /// <returns>Encryption Stream</returns>
+        static protected Stream PipeEncryption(Stream p_stream,SerializerMode p_mode,string p_password) {
+            Stream ss = p_stream;
+            //Invalid input stream
+            if(ss==null)   return null;
+            string pwd       = p_password;
+            bool   encrypted = !string.IsNullOrEmpty(pwd);
+            //No password
+            if(!encrypted) return null;            
+            //Create hashing/encryption settings
+            byte[] pwd_str = System.Text.ASCIIEncoding.ASCII.GetBytes(pwd);
+            MD5CryptoServiceProvider       md5   = new MD5CryptoServiceProvider(); 
+            TripleDESCryptoServiceProvider tdcsp = new TripleDESCryptoServiceProvider();
+            tdcsp.Key  = md5.ComputeHash(pwd_str);
+            tdcsp.Mode = CipherMode.ECB; //CBC, CFB
+            //Create stream
+            switch(p_mode) {
+                case SerializerMode.Serialize:   return new CryptoStream(ss,tdcsp.CreateEncryptor(), CryptoStreamMode.Write); 
+                case SerializerMode.Deserialize: return new CryptoStream(ss,tdcsp.CreateDecryptor(), CryptoStreamMode.Read);  
+            }
+            return null;
+        }
+        #endregion
+
+        #region Stream PipeBase64Conversion
+        /// <summary>
+        /// Pipe a Base64 conversion stream around the input stream.
+        /// </summary>
+        /// <param name="p_stream">Stream to be encoded in base64</param>
+        /// <returns>Base64 Encoding Stream</returns>
+        static protected Stream PipeBase64Conversion(Stream p_stream,SerializerMode p_mode,SerializerAttrib p_attribs) {            
+            Stream ss = p_stream;
+            //Invalid input stream
+            if(ss==null)   return null;                        
+            //If Base64 not specified
+            if((p_attribs & SerializerAttrib.Base64)==0) return null;
+            switch(p_mode) {
+                case SerializerMode.Serialize:   return new CryptoStream(ss,new ToBase64Transform(),  CryptoStreamMode.Write);
+                case SerializerMode.Deserialize: return new CryptoStream(ss,new FromBase64Transform(),CryptoStreamMode.Read);
+            }            
+            return null;
+        }
+        #endregion
+
+        #endregion
+
+        #endregion
+
         /// <summary>
         /// Simple Id for counting serializers.
         /// </summary>
@@ -375,10 +605,6 @@ namespace UnityExt.Core.IO {
         /// <returns></returns>
         virtual protected Stream GetBaseStream() { return descriptor==null ? null : ((Stream)descriptor.container); }
 
-        /// <summary>
-        /// Returns the final stream to be written
-        /// </summary>
-        /// <returns></returns>
         protected Stream GetStream() {
             SerializerDesc dsc = descriptor;
             //File Open/Create to let it run inside thread 
@@ -386,130 +612,11 @@ namespace UnityExt.Core.IO {
             //Stream Pipeline
             Stream ss = null;                        
             //Check if file_path or if 'StringBuilder' flow or 'container' as Stream
-            ss = need_file ? PipeFile((string)dsc.container,dsc.attribs) : GetBaseStream();
-            //If no stream and container isn' then error
-            if(ss==null) return null;
-            //Next Stream
-            Stream ns;
-            //Encryption w/ password
-            ns = PipeEncryption(ss,dsc.password);      if(ns != null) ss = ns;
-            //Compression Streams
-            ns = PipeCompression(ss,dsc.attribs);      if(ns != null) ss = ns;
-            //Base64 Stream
-            ns = PipeBase64Conversion(ss,dsc.attribs); if(ns != null) ss = ns;
-            //Return final stream
+            ss = need_file ? PipeFile((string)dsc.container,mode,dsc.attribs) : GetBaseStream();
+            //Pipe all needed streams and return it
+            ss = GetStream(ss,dsc.password,mode,dsc.attribs);
             return ss;
         }
-
-        /// <summary>
-        /// Pipe a FileStream if a valid path is provided
-        /// </summary>
-        /// <param name="p_path"></param>
-        /// <param name="p_attribs"></param>
-        /// <returns></returns>
-        protected Stream PipeFile(string p_path,SerializerAttrib p_attribs) {                        
-            string file_path = p_path;
-            if(string.IsNullOrEmpty(file_path)) return null;
-            //Create FileStream if file-path
-            if(mode == SerializerMode.Serialize)   return File.Create  (file_path);
-            if(mode == SerializerMode.Deserialize) return File.OpenRead(file_path);
-            return null;
-        }
-
-        #region Stream PipeCompression
-
-        /// <summary>
-        /// Pipe a compression stream around the passed stream
-        /// </summary>
-        /// <param name="p_stream">Stream to be compressed</param>
-        /// <returns>Compression Stream</returns>
-        protected Stream PipeCompression(Stream p_stream,SerializerAttrib p_attribs) {
-            Stream ss = p_stream;
-            //Invalid stream
-            if(ss==null) return null;
-            //Not operating
-            if(!active)  return null;
-            //Detect compression level Off | Fast | Optimal
-            System.IO.Compression.CompressionLevel compression_level = CompressionLevel.NoCompression;
-            //Select the enum
-            if((p_attribs & (SerializerAttrib.GZip     | SerializerAttrib.Deflate))     != 0) compression_level = CompressionLevel.Optimal;
-            if((p_attribs & (SerializerAttrib.GZipFast | SerializerAttrib.DeflateFast)) != 0) compression_level = CompressionLevel.Fastest;
-            //Skip if off
-            if(compression_level == CompressionLevel.NoCompression) return null;
-            //Check compression mode
-            SerializerAttrib compression_type  = SerializerAttrib.None;
-            if((p_attribs & (SerializerAttrib.GZip     | SerializerAttrib.GZipFast))     != 0) compression_type  = SerializerAttrib.GZip;
-            if((p_attribs & (SerializerAttrib.Deflate  | SerializerAttrib.DeflateFast))  != 0) compression_type  = SerializerAttrib.Deflate;
-            //Skip if none
-            if(compression_type == SerializerAttrib.None) return null;
-            //Check compression mode
-            System.IO.Compression.CompressionMode  compression_mode = mode == SerializerMode.Serialize ? System.IO.Compression.CompressionMode.Compress : System.IO.Compression.CompressionMode.Decompress;
-            //Generate the appropriate stream
-            switch(compression_type) {
-                case SerializerAttrib.GZip:    return compression_mode == CompressionMode.Compress ? new GZipStream   (ss,compression_level) : new GZipStream   (ss,compression_mode);
-                case SerializerAttrib.Deflate: return compression_mode == CompressionMode.Compress ? new DeflateStream(ss,compression_level) : new DeflateStream(ss,compression_mode);
-            }
-            return null;
-        }
-
-        #endregion
-
-        #region Stream PipeEncryption
-
-        /// <summary>
-        /// Pipe an encryption stream around the passed stream.
-        /// </summary>
-        /// <param name="p_stream">Stream to be encrypted.</param>
-        /// <returns>Encryption Stream</returns>
-        protected Stream PipeEncryption(Stream p_stream,string p_password) {
-            Stream ss = p_stream;
-            //Invalid input stream
-            if(ss==null)   return null;
-            string password  = p_password;
-            bool   encrypted = !string.IsNullOrEmpty(p_password);
-            //No password
-            if(!encrypted) return null;
-            //Any invalid state
-            if(!active)     return null;
-            //Create hashing/encryption settings
-            byte[] pwd_str = System.Text.ASCIIEncoding.ASCII.GetBytes(password);
-            MD5CryptoServiceProvider       md5   = new MD5CryptoServiceProvider(); 
-            TripleDESCryptoServiceProvider tdcsp = new TripleDESCryptoServiceProvider();
-            tdcsp.Key  = md5.ComputeHash(pwd_str);
-            tdcsp.Mode = CipherMode.ECB; //CBC, CFB
-            //Create stream
-            switch(mode) {
-                case SerializerMode.Serialize:   return new CryptoStream(ss,tdcsp.CreateEncryptor(), CryptoStreamMode.Write); 
-                case SerializerMode.Deserialize: return new CryptoStream(ss,tdcsp.CreateDecryptor(), CryptoStreamMode.Read);  
-            }
-            return null;
-        }
-
-        #endregion
-
-        #region Stream PipeBase64Conversion
-
-        /// <summary>
-        /// Pipe a Base64 conversion stream around the input stream.
-        /// </summary>
-        /// <param name="p_stream">Stream to be encoded in base64</param>
-        /// <returns>Base64 Encoding Stream</returns>
-        protected Stream PipeBase64Conversion(Stream p_stream,SerializerAttrib p_attribs) {            
-            Stream ss = p_stream;
-            //Invalid input stream
-            if(ss==null)   return null;            
-            //Any invalid state
-            if(!active)     return null;
-            //If Base64 not specified
-            if((p_attribs & SerializerAttrib.Base64)==0) return null;
-            switch(mode) {
-                case SerializerMode.Serialize:   return new CryptoStream(ss,new ToBase64Transform(),  CryptoStreamMode.Write);
-                case SerializerMode.Deserialize: return new CryptoStream(ss,new FromBase64Transform(),CryptoStreamMode.Read);
-            }            
-            return null;
-        }
-
-        #endregion
 
         #endregion
     }
