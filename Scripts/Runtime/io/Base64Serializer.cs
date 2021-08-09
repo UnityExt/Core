@@ -23,8 +23,16 @@ namespace UnityExt.Core.IO {
             //Containers are already the 'reader'/'writer' primitives            
             if(dsc.container is StringBuilder) {
                 //When StringBuilder 'container' convert to MemoryStream then re-encode bytes into 'string'
-                if(mode == SerializerMode.Serialize)   { ss = new MemoryStream(); dsc.output = ss; }            
-                if(mode == SerializerMode.Deserialize) { ss = new MemoryStream(Encoding.UTF8.GetBytes(((StringBuilder)dsc.container).ToString())); }                
+                if(mode == SerializerMode.Serialize)   { 
+                    ss = new MemoryStream(); 
+                    dsc.output = ss; 
+                    dsc.attribs |= SerializerAttrib.CloseStream;
+                }            
+                if(mode == SerializerMode.Deserialize) { 
+                    StringBuilder sb = (StringBuilder)dsc.container;                    
+                    ss = new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())); 
+                    dsc.attribs |= SerializerAttrib.CloseStream;
+                }
             }
             return ss;
         }
