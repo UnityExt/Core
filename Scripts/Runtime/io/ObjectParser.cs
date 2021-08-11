@@ -9,6 +9,222 @@ using System.IO;
 
 namespace UnityExt.Core.IO {
 
+    #region enum ObjectMemberType
+    /*
+    /// <summary>
+    /// Enumeration that tells which fields to sample when parsing
+    /// </summary>
+    [Flags]
+    public enum ObjectMemberType : byte {        
+        /// <summary>
+        /// Public Members
+        /// </summary>
+        Public    = (1<<0),
+        /// <summary>
+        /// Private | Protected | Internal
+        /// </summary>
+        NonPublic = (1<<1),
+        /// <summary>
+        /// Field
+        /// </summary>
+        Field     = (1<<2),
+        /// <summary>
+        /// Get/Set
+        /// </summary>
+        GetSet  = (1<<3),
+        /// <summary>
+        /// All Members
+        /// </summary>
+        All       = Public | NonPublic | Field | GetSet
+    }
+    //*/
+    #endregion
+
+    #region class ParseSettings
+    /// <summary>
+    /// Parsing settings to guide the object parser.
+    /// </summary>
+    public class ParseSettings {
+
+        #region UnitySettings
+        /// <summary>
+        /// Specific Parsing Settings for Unity3D context.
+        /// </summary>
+        static public ParseSettings UnitySettings {
+            get {
+                if(m_unity_settings!=null) return m_unity_settings;
+                ParseSettings ps = m_unity_settings = new ParseSettings();                
+                ps.ignoreNull=true;
+                ps.AddSurrogate<UnityEngine.Vector2          >("x","y");
+                ps.AddSurrogate<UnityEngine.Vector3          >("x","y","z");
+                ps.AddSurrogate<UnityEngine.Vector4          >("x","y","z","w");
+                ps.AddSurrogate<UnityEngine.Vector2Int       >("x","y");
+                ps.AddSurrogate<UnityEngine.Vector3Int       >("x","y","z");
+                ps.AddSurrogate<UnityEngine.Quaternion       >("x","y","z","w");
+                ps.AddSurrogate<UnityEngine.Color            >("r","g","b","a");
+                ps.AddSurrogate<UnityEngine.Color32          >("r","g","b","a");
+                ps.AddSurrogate<UnityEngine.Rect             >("x","y","width","height");
+                ps.AddSurrogate<UnityEngine.RectInt          >("x","y","width","height");
+                ps.AddSurrogate<UnityEngine.RectOffset       >("left","right","top","bottom");
+                ps.AddSurrogate<UnityEngine.Ray              >("origin","direction");
+                ps.AddSurrogate<UnityEngine.Ray2D            >("origin","direction");
+                ps.AddSurrogate<UnityEngine.Bounds           >("min","max");
+                ps.AddSurrogate<UnityEngine.BoundsInt        >("min","max");
+                ps.AddSurrogate<UnityEngine.BoundingSphere   >("position","radius");
+                ps.AddSurrogate<UnityEngine.GradientAlphaKey >("alpha","time");
+                ps.AddSurrogate<UnityEngine.GradientColorKey >("color","time");
+                ps.AddSurrogate<UnityEngine.Keyframe         >("time","value","inTangent","outTangent","inWeight","outWeight","weightedMode", "tangentMode");
+                ps.AddSurrogate<UnityEngine.LayerMask        >("value");
+                ps.AddSurrogate<UnityEngine.Matrix4x4        >("m00","m33","m23","m13","m03","m32","m22","m02","m12","m21","m11","m01","m30","m20","m10","m31");
+                ps.AddSurrogate<UnityEngine.Plane            >("normal","distance");
+                ps.AddSurrogate<UnityEngine.RangeInt         >("start","length");
+                ps.AddSurrogate<UnityEngine.Resolution       >("width","height","refreshRate");
+                ps.AddSurrogate<UnityEngine.AnimationCurve   >("keys","preWrapMode","postWrapMode");                
+                ps.AddSurrogate<UnityEngine.Gradient         >("colorKeys","alphaKeys","mode");
+                return ps;
+            }
+        }
+        static private ParseSettings m_unity_settings;
+        #endregion
+
+        /// <summary>
+        /// Default settings
+        /// </summary>
+        static internal ParseSettings Default = new ParseSettings();
+        static List<MemberInfo> m_empty_sl = new List<MemberInfo>();
+
+        /// <summary>
+        /// Reflection flags to tell which field/properties to navigate
+        /// </summary>
+        //public ObjectMemberType members =  ObjectMemberType.Public | ObjectMemberType.Field;
+
+        /// <summary>
+        /// Flag that tells the parser to skip evaluating fields when they value is null
+        /// </summary>
+        public bool ignoreNull;
+
+        /// <summary>
+        /// Internals.
+        /// </summary>
+        private Dictionary<Type,List<MemberInfo>> m_surrogates;
+
+        /// <summary>
+        /// CTOR.
+        /// </summary>
+        public ParseSettings() {
+            m_surrogates = new Dictionary<Type, List<MemberInfo>>();
+        }
+
+        #region Surrogates
+        /*
+        public bool IsSurrogateAllowed(MemberInfo p_member) {
+            MemberInfo mi = p_member;
+            if(mi==null) return false;            
+            FieldInfo    fi = (mi is FieldInfo   ) ? (FieldInfo   )mi : null;
+            PropertyInfo pi = (mi is PropertyInfo) ? (PropertyInfo)mi : null;            
+            //bool is_public       = (pi==null) ? (fi==null ? false : fi.IsPublic) : pi.GetGetMethod
+            //bool allow_public    = (members & ObjectMemberType.Public   )!=0;
+            //bool allow_nonpublic = (members & ObjectMemberType.NonPublic)!=0;
+            //bool allow_field     = (members & ObjectMemberType.Field    )!=0;
+            //bool allow_getset    = (members & ObjectMemberType.GetSet   )!=0;            
+            return true;
+        }
+        //*/
+
+        /// <summary>
+        /// Fetches the list of surrogate members of a given type.
+        /// </summary>
+        /// <param name="p_type">Type to check</param>
+        /// <returns>List of added surrogates</returns>
+        public List<MemberInfo> GetSurrogates(Type p_type) {
+            List<MemberInfo> sl = m_surrogates.ContainsKey(p_type) ? m_surrogates[p_type] : null;
+            return sl==null ? m_empty_sl : sl;
+        }
+
+        /// <summary>
+        /// Fetches the list of surrogate members of a given type.
+        /// </summary>
+        /// <typeparam name="T">Type to check</param>
+        /// <returns>List of added surrogates</returns>        
+        public List<MemberInfo> GetSurrogates<T>() { return GetSurrogates(typeof(T)); }
+
+        /// <summary>
+        /// Adds a surrogate field to be sampled when the struct/class isn't accessible by the code.
+        /// </summary>
+        /// <param name="p_type">Type to be parsed</param>
+        /// <param name="p_fields">Field/Property names</param>
+        public void AddSurrogate(Type p_type,params string[] p_fields) {
+            if(p_type==null) return;
+            List<MemberInfo> sl = m_surrogates.ContainsKey(p_type) ? m_surrogates[p_type] : null;            
+            for(int i=0;i<p_fields.Length;i++) {
+                MemberInfo[] ml = p_type.GetMember(p_fields[i],ObjectParser.reflection_flags);
+                if(ml.Length<=0) continue;
+                if(sl==null) sl = new List<MemberInfo>();
+                sl.Add(ml[0]);
+            }            
+            if(sl!=null)m_surrogates[p_type] = sl;
+        }
+
+        /// <summary>
+        /// Adds a surrogate field to be sampled when the struct/class isn't accessible by the code.
+        /// </summary>
+        /// <typeparam name="T">Type to be parsed</typeparam>
+        /// <param name="p_fields">Field/Property names</param>                
+        public void AddSurrogate<T>(params string[] p_fields) { AddSurrogate(typeof(T),p_fields); }
+
+        /// <summary>
+        /// Removes a surrogated field.
+        /// </summary>
+        /// <param name="p_type">Type being parsed</param>
+        /// <param name="p_fields">Field names</param>
+        public void RemoveSurrogate(Type p_type,params string[] p_fields) {
+            List<MemberInfo> sl = m_surrogates.ContainsKey(p_type) ? m_surrogates[p_type] : null;
+            if(sl==null) return;
+            for(int i=0;i<p_fields.Length;i++) {
+                for(int j=0;j<sl.Count;j++) if(sl[j].Name == p_fields[i]) { sl.RemoveAt(j--); break; }
+            }            
+            m_surrogates[p_type] = sl.Count<=0 ? null : sl;
+            if(sl.Count<=0) m_surrogates.Remove(p_type);
+        }
+
+        /// <summary>
+        /// Removes a surrogated field.
+        /// </summary>
+        /// <typeparam name="T">Type being parsed</typeparam>
+        /// <param name="p_fields">Field/Property names</param>                
+        public void RemoveSurrogate<T>(params string[] p_fields) { RemoveSurrogate(typeof(T),p_fields); }
+
+        /// <summary>
+        /// Removes all surrogates from the given type.
+        /// </summary>
+        /// <param name="p_type">Type to be cleared</param>
+        public void RemoveSurrogate(Type p_type) {
+            List<MemberInfo> sl = m_surrogates.ContainsKey(p_type) ? m_surrogates[p_type] : null;
+            if(sl==null) return;
+            sl.Clear();
+            m_surrogates[p_type] = null;
+            m_surrogates.Remove(p_type);
+        }
+
+        /// <summary>
+        /// Removes all surrogates from the given type.
+        /// </summary>
+        /// <typeparam name="T">Type to be cleared</typeparam>
+        public void RemoveSurrogate<T>() { RemoveSurrogate(typeof(T)); }
+
+        /// <summary>
+        /// Removes all added surrogates.
+        /// </summary>
+        public void ClearSurrogates() {
+            //Clear all lists
+            foreach(List<MemberInfo> itl in m_surrogates.Values) itl.Clear();
+            //Clear the lut
+            m_surrogates.Clear();
+        }
+        #endregion
+    }
+    #endregion
+
     #region class ObjectParserTokenLog
     /// <summary>
     /// Auxiliary class that outputs human readable information about an object being parsed.
@@ -224,6 +440,11 @@ namespace UnityExt.Core.IO {
         #endregion
 
         #region static 
+
+        /// <summary>
+        /// Default settings applied to all parsers.
+        /// </summary>
+        static public ParseSettings DefaultSettings = new ParseSettings();
 
         /// <summary>
         /// CTOR.
@@ -468,8 +689,18 @@ namespace UnityExt.Core.IO {
         public int tokens { get; private set; }
 
         /// <summary>
+        /// Reference to the parse settings.
+        /// </summary>
+        public ParseSettings settings {
+            get { return m_settings; }
+            set { m_settings = value; }
+        }
+        private ParseSettings m_settings;
+
+        /// <summary>
         /// Internals
         /// </summary>        
+        private ParseSettings parse_settings { get { return m_settings==null ? (DefaultSettings==null ? ParseSettings.Default : DefaultSettings) : m_settings; } }
         private Stack<object>               m_stack;        
         private List<StackBuffer>           m_stack_buffer;
         private int                         m_stack_buffer_top;
@@ -489,8 +720,7 @@ namespace UnityExt.Core.IO {
         }
         #endregion
 
-        #region Auxiliary
-        
+        #region Auxiliary        
         /// <summary>
         /// Helper to check is a given type is an enum
         /// </summary>
@@ -537,7 +767,6 @@ namespace UnityExt.Core.IO {
         #endregion
 
         #region Read
-
         /// <summary>
         /// Begins a read procedure and waits for the tokens containing the object's composition.
         /// </summary>
@@ -587,11 +816,17 @@ namespace UnityExt.Core.IO {
             OnPush(this,p_type_idx,p_name_idx,p_ref_idx,v,p_struct);
             if(m_handler!=null) m_handler.OnPush(this,p_type_idx,p_name_idx,p_ref_idx,v,p_struct);
             //Evaluate Members
-            MemberInfo[] members = null;
-            members = GetMembersCached(v_type, MemberTypes.Field);
-            EvaluateMembers(members,p_type_idx,p_name_idx,p_ref_idx,v,p_struct);
-            members = GetMembersCached(v_type, MemberTypes.Property);
-            EvaluateMembers(members,p_type_idx,p_name_idx,p_ref_idx,v,p_struct);
+            MemberInfo[]     mia = null;
+            List<MemberInfo> mil = null;
+            //Evaluate Fields
+            mia = GetMembersCached(v_type, MemberTypes.Field);
+            for(int i=0;i<mia.Length;i++) EvaluateMember(mia[i],true,p_ref_idx,p_ref,p_struct);            
+            //Evaluate Properties
+            mia = GetMembersCached(v_type, MemberTypes.Property);
+            for(int i=0;i<mia.Length;i++) EvaluateMember(mia[i],true,p_ref_idx,p_ref,p_struct);
+            //Evaluate Surrogates
+            mil = parse_settings.GetSurrogates(v_type);
+            for(int i=0;i<mil.Count; i++) EvaluateMember(mil[i],false,p_ref_idx,p_ref,p_struct);
             //Evaluate if collection
             if(v is IDictionary) EvaluateCollection((IDictionary)v,p_type_idx,p_name_idx,p_ref_idx); else
             if(v is IEnumerable) EvaluateCollection((IEnumerable)v,p_type_idx,p_name_idx,p_ref_idx);                        
@@ -828,6 +1063,8 @@ namespace UnityExt.Core.IO {
                     int t_ref_idx = v_type_cat == TypeCategory.Reference ? GetReferenceIndex(v) : -1;
                     //If existing reference just notify                    
                     if(t_ref_idx>=0) { 
+                        //If ignore null values skip
+                        if(t_ref_idx==0)if(parse_settings.ignoreNull) break;
                         OnReference(this,t_type_idx,t_name_idx,t_ref_idx);
                         if(m_handler!=null) m_handler.OnReference(this,t_type_idx,t_name_idx,t_ref_idx);
                         break;
@@ -879,12 +1116,21 @@ namespace UnityExt.Core.IO {
         private void Evaluate(int p_type_idx,int p_name_idx,ushort    p_value) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); }
         private void Evaluate(int p_type_idx,int p_name_idx,ulong     p_value) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); }
         private void Evaluate(int p_type_idx,int p_name_idx,DateTime  p_value) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); }
-        private void Evaluate(int p_type_idx,int p_name_idx,TimeSpan  p_value) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); }
-        private void Evaluate(int p_type_idx,int p_name_idx,Type      p_value) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); }
+        private void Evaluate(int p_type_idx,int p_name_idx,TimeSpan  p_value) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); }        
         private void Evaluate(int p_type_idx,int p_name_idx,decimal   p_value) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); }
         private void Evaluate(int p_type_idx,int p_name_idx,string    p_value) {
             //non null handle its contents
             if(p_value != null) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); return; }
+            //If ignore null values skip
+            if(parse_settings.ignoreNull) return;
+            //if null treat as reference pointing to null
+            OnReference(this,p_type_idx,p_name_idx,0); //0 == null
+            if(m_handler!=null) m_handler.OnReference(this,p_type_idx,p_name_idx,0);
+        }
+        private void Evaluate(int p_type_idx,int p_name_idx,Type      p_value) { 
+            if(p_value != null) { OnValue(this,p_type_idx,p_name_idx,p_value); if(m_handler!=null) m_handler.OnValue(this,p_type_idx,p_name_idx,p_value); return; }
+            //If ignore null values skip
+            if(parse_settings.ignoreNull) return;
             //if null treat as reference pointing to null
             OnReference(this,p_type_idx,p_name_idx,0); //0 == null
             if(m_handler!=null) m_handler.OnReference(this,p_type_idx,p_name_idx,0);
@@ -968,20 +1214,14 @@ namespace UnityExt.Core.IO {
         }
 
         private void InternalEvaluateItem(Type p_element_type,object p_item) { object e = p_item; Type e_type = e==null ? p_element_type : e.GetType(); Evaluate(e_type,null,e); tokens++; }
-
         private void InternalEvaluateList      (IList ctn,Type p_element_type) { for(int i=0;i<ctn.Count; i++) { InternalEvaluateItem(p_element_type,ctn[i]         ); } }
         private void InternalEvaluateArray     (Array ctn,Type p_element_type) { for(int i=0;i<ctn.Length;i++) { InternalEvaluateItem(p_element_type,ctn.GetValue(i)); } }        
-        private void InternalEvaluateCollection(IEnumerable ctn,Type p_element_type,bool p_reverse) {      
-            
+        private void InternalEvaluateCollection(IEnumerable ctn,Type p_element_type,bool p_reverse) {                  
             if(p_reverse)
-            if(m_reverse_stack==null) m_reverse_stack = new Stack();            
-
-            foreach(object e in ctn) { 
-                if(p_reverse) m_reverse_stack.Push(e); else InternalEvaluateItem(p_element_type,e);
-            }
+            if(m_reverse_stack==null) m_reverse_stack = new Stack();
+            foreach(object e in ctn) { if(p_reverse) m_reverse_stack.Push(e); else InternalEvaluateItem(p_element_type,e); }
             if(p_reverse)
-            while(m_reverse_stack.Count>0) { object e = m_reverse_stack.Pop(); InternalEvaluateItem(p_element_type,e); }
-            
+            while(m_reverse_stack.Count>0) { object e = m_reverse_stack.Pop(); InternalEvaluateItem(p_element_type,e); }            
         }
         private Stack m_reverse_stack;
 
@@ -1066,59 +1306,33 @@ namespace UnityExt.Core.IO {
         }
         #endregion
 
-        #region Evaluate Members
+        #region Evaluate Members        
         /// <summary>
-        /// Analyses the list of members of an object.
-        /// </summary>
-        /// <param name="p_members"></param>
-        /// <param name="p_type_index"></param>
-        /// <param name="p_name_index"></param>
-        /// <param name="p_ref_index"></param>
-        private void EvaluateMembers(MemberInfo[] p_members,int p_type_idx,int p_name_idx,int p_ref_idx,object p_ref,bool p_struct) {
-            //Locals
-            Type   v_type = GetType(p_type_idx);
-            string v_name = GetName(p_name_idx);
-            object v      = p_struct ? p_ref : GetReference(p_ref_idx);
-            //Iterate members and evaluate            
-            MemberInfo[] ml = p_members;
-            for(int i=0;i<ml.Length;i++) {
-                MemberInfo   mi    = ml[i];
-                FieldInfo    mi_f  = mi is FieldInfo    ? (FieldInfo   )mi : null;
-                PropertyInfo mi_p  = mi is PropertyInfo ? (PropertyInfo)mi : null;
-                bool         is_rw = mi_f==null ? (mi_p.CanWrite && mi_p.CanRead) : true;
-                //Grammar needs to be RW
-                if(!is_rw) continue;
-                //Flag telling this field can be visited
-                bool is_valid = IsSerializableDefined(mi);
-                //For now all are valid (need to add grammar settings to filter out fields)
-                //SerializableField mi_attrib = is_valid ? GetAttribCached(mi) : null;
-                //For structs accept all fields and get AND set properties                        
-                if(p_struct) {
-                    //Fields
-                    is_valid=true;
-                    //Assert Get/Set
-                    if(mi_p!=null) {
-                        //Not be [] operator
-                        bool is_brkt  = is_rw   ? (mi.Name=="Item") : false;
-                        int  set_args = is_brkt ? GetIndexParametersCached(mi_p) : 0;
-                        //Can proceed
-                        is_valid = is_rw ? set_args<=0 : false;
-                    }                            
-                }
-                //Skip if not valid
-                if(!is_valid) continue;
-                //Fetch type and value based on member type
-                Type   mi_type  = null;
-                string mi_name  = mi.Name;
-                object mi_value = null;                
-                if(mi_f!=null) { mi_type = mi_f.FieldType;    mi_value = mi_f.GetValue(v); } else
-                if(mi_p!=null) { mi_type = mi_p.PropertyType; mi_value = mi_p.GetValue(v); }
-                //Override using the actual object's type for more precise serialization
-                if(mi_value!=null) mi_type = mi_value.GetType();
-                //Evaluate the member value
-                Evaluate(mi_type,mi_name,mi_value);
-            }
+        /// Evaluates a member based on Reflection's MemberInfo
+        /// </summary>        
+        private void EvaluateMember(MemberInfo p_mi,bool p_need_attrib,int p_ref_idx,object p_ref,bool p_struct) { 
+            object       v     = p_struct ? p_ref : GetReference(p_ref_idx);
+            MemberInfo   mi    = p_mi;
+            FieldInfo    mi_f  = mi is FieldInfo    ? (FieldInfo   )mi : null;
+            PropertyInfo mi_p  = mi is PropertyInfo ? (PropertyInfo)mi : null;
+            bool         is_rw = mi_f==null ? (mi_p.CanWrite && mi_p.CanRead) : true;
+            //Member needs to be RW
+            if(!is_rw) return;
+            //Flag telling this field can be visited
+            bool is_valid = p_need_attrib ? IsSerializableDefined(mi) : true;
+            if(!is_valid) return;
+            //Fetch type and value based on member type
+            Type   mi_type  = null;
+            string mi_name  = mi.Name;
+            object mi_value = null;                
+            if(mi_f!=null) { mi_type = mi_f.FieldType;    mi_value = mi_f.GetValue(v); } else
+            if(mi_p!=null) { mi_type = mi_p.PropertyType; mi_value = mi_p.GetValue(v); }
+            //Override using the actual object's type for more precise serialization
+            if(mi_value!=null) mi_type = mi_value.GetType();
+            //Evaluate the member value
+            Evaluate(mi_type,mi_name,mi_value);
         }
+
         #endregion
 
         #endregion

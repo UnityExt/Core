@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
+using Math = System.Math;
 
 namespace UnityExt.Core.IO {
 
@@ -46,7 +47,7 @@ namespace UnityExt.Core.IO {
         /// Internal buffer to handle the operations.
         /// </summary>
         static private char            m_digits_sep  = CultureInfo.InvariantCulture.NumberFormat.NumberDecimalSeparator[0];
-        static private string          m_digits_lut  = "0123456789";
+        static private string          m_digits_lut  = "0123456789abcdef";
         static private char[]          m_buffer      = new char[128];
         static private StringBuilder[] m_sb_list     = new StringBuilder[32];        
         static private FieldInfo       m_sb_chars_fi = typeof(StringBuilder).GetField("m_ChunkChars"   , BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.GetField | BindingFlags.GetProperty);
@@ -56,7 +57,7 @@ namespace UnityExt.Core.IO {
         static Parse() {
             pow_cache = new double[64];
             for(int i=0;i<pow_cache.Length;i++) {
-                pow_cache[i] = Math.Pow(10.0,(double)i);
+                pow_cache[i] = System.Math.Pow(10.0,(double)i);
             }
         }
 
@@ -128,21 +129,27 @@ namespace UnityExt.Core.IO {
         /// <param name="p_negative">Flag if negative number</param>
         /// <param name="p_int">Integer part</param>
         /// <param name="p_frac">Fractional part</param>
-        static private void Extract(char[] p_buffer,int p_offset,int p_count,out bool p_negative,out ulong p_int) {
+        static private void Extract(char[] p_buffer,int p_offset,int p_count,out bool p_negative,out ulong p_int,ulong p_base) {
             ulong vi = 0;            
             p_negative = false;                       
             ulong m = 1;
             for(int i=p_count-1;i>=0;i--) {
                 char c = p_buffer[i+p_offset];
                 if(c<=0) break;
+                ulong vd=0;
+                switch(c) {                                      
+                    case '0': case '1': case '2': case '3': case '4': 
+                    case '5': case '6': case '7': case '8': case '9':           vd = (ulong)( c-'0');     break;
+                    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': vd = (ulong)((c-'a')+10); break;
+                }
                 switch(c) {
                     case '-': p_negative = true;  break;                    
                     case '0': case '1': case '2': case '3': case '4': 
-                    case '5': case '6': case '7': case '8': case '9': {
-                        ulong v  = vi;
-                        ulong vd = (ulong)(c-'0');                        
+                    case '5': case '6': case '7': case '8': case '9': 
+                    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': {
+                        ulong v  = vi;                        
                         v += vd * m;
-                        m*=10;
+                        m*=p_base;
                         vi=v;
                     }
                     break;
@@ -216,21 +223,26 @@ namespace UnityExt.Core.IO {
         /// <param name="p_negative">Flag if negative number</param>
         /// <param name="p_int">Integer part</param>
         /// <param name="p_frac">Fractional part</param>
-        static private void Extract(char[] p_buffer,int p_offset,int p_count,out bool p_negative,out decimal p_int) {
+        static private void Extract(char[] p_buffer,int p_offset,int p_count,out bool p_negative,out decimal p_int,decimal p_base) {
             decimal vi = 0;            
             p_negative = false;                       
             decimal m = 1;
             for(int i=p_count-1;i>=0;i--) {
                 char c = p_buffer[i+p_offset];
-                if(c<=0) break;
+                decimal vd=0;
+                switch(c) {                                      
+                    case '0': case '1': case '2': case '3': case '4': 
+                    case '5': case '6': case '7': case '8': case '9':           vd = (decimal)( c-'0');     break;
+                    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': vd = (decimal)((c-'a')+10); break;
+                }
                 switch(c) {
                     case '-': p_negative = true;  break;                    
                     case '0': case '1': case '2': case '3': case '4': 
-                    case '5': case '6': case '7': case '8': case '9': {
-                        decimal v  = vi;
-                        decimal vd = (decimal)(c-'0');                        
+                    case '5': case '6': case '7': case '8': case '9': 
+                    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': {
+                        decimal v  = vi;                        
                         v += vd * m;
-                        m*=10;
+                        m*=p_base;
                         vi=v;
                     }
                     break;
@@ -334,6 +346,8 @@ namespace UnityExt.Core.IO {
         }
 
         #endregion
+
+        #region Parsing
 
         #region bool
         /// <summary>
@@ -624,7 +638,7 @@ namespace UnityExt.Core.IO {
         static public void To(char[] p_buffer,int p_offset,int p_count,out ulong p_value) {                        
             bool nf = false;
             ulong vi;            
-            Extract(p_buffer,p_offset,p_count,out nf,out vi);
+            Extract(p_buffer,p_offset,p_count,out nf,out vi,10);
             p_value=vi;
         }
 
@@ -668,7 +682,7 @@ namespace UnityExt.Core.IO {
         static public void To(char[] p_buffer,int p_offset,int p_count,out long p_value) {                        
             bool nf = false;
             ulong vi;            
-            Extract(p_buffer,p_offset,p_count,out nf,out vi);
+            Extract(p_buffer,p_offset,p_count,out nf,out vi,10);
             p_value = nf ? -(long)vi : (long)vi;
         }
 
@@ -719,7 +733,7 @@ namespace UnityExt.Core.IO {
         static public void To(char[] p_buffer,int p_offset,int p_count,out decimal p_value) {                        
             bool nf = false;
             decimal vi;
-            Extract(p_buffer,p_offset,p_count,out nf,out vi);
+            Extract(p_buffer,p_offset,p_count,out nf,out vi,10);
             p_value = nf ? -vi : vi;
         }
 
@@ -1087,6 +1101,52 @@ namespace UnityExt.Core.IO {
         /// <returns>Number of char written.</returns>
         static public int From(StringBuilder p_buffer,Enum p_value) { PopulateBuffer(p_buffer); int c=From(m_buffer,p_value); p_buffer.Clear(); p_buffer.Append(m_buffer,0,c); return c; }
         #endregion
+
+        #endregion
+
+        /// <summary>
+        /// Generates a concatenated date hash for '.UtcNow' variable.
+        /// </summary>
+        /// <returns>A string composed of the date-time parts as a YYMMDD... hash</returns>
+        static public string DateHash(string p_yf="yyyy",string p_mf = "MM",string p_df="dd",string p_thf="HH",string p_tmf="mm",string p_tsf="ss",string p_separator="") {
+            return DateHash(DateTime.UtcNow,p_yf,p_mf,p_df,p_thf,p_tmf,p_tsf,p_separator);
+        }
+
+        /// <summary>
+        /// Generates a concatenated date hash for the DateTime informed.
+        /// </summary>
+        /// <param name="p_date">DateTime to extract the hash components.</param>
+        /// <returns>A string composed of the date-time parts as a YYMMDD... hash</returns>
+        static public string DateHash(System.DateTime p_date,string p_yf="yyyy",string p_mf = "MM",string p_df="dd",string p_thf="HH",string p_tmf="mm",string p_tsf="ss",string p_separator="") {
+            StringBuilder sb = new StringBuilder();
+            bool f = false;
+            string sep = p_separator;
+            if(!string.IsNullOrEmpty(p_yf))  {                       sb.Append(p_date.ToString(p_yf));  f = true; }
+            if(!string.IsNullOrEmpty(p_mf))  { if(f) sb.Append(sep); sb.Append(p_date.ToString(p_mf));  f = true; }
+            if(!string.IsNullOrEmpty(p_df))  { if(f) sb.Append(sep); sb.Append(p_date.ToString(p_df));  f = true; }
+            if(!string.IsNullOrEmpty(p_thf)) { if(f) sb.Append(sep); sb.Append(p_date.ToString(p_thf)); f = true; } 
+            if(!string.IsNullOrEmpty(p_tmf)) { if(f) sb.Append(sep); sb.Append(p_date.ToString(p_tmf)); f = true; }
+            if(!string.IsNullOrEmpty(p_tsf)) { if(f) sb.Append(sep); sb.Append(p_date.ToString(p_tsf)); f = true; }                     
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Returns the ordinal suffix.
+        /// </summary>
+        /// <param name="p_number">Number to have its ordinal sampled</param>
+        /// <returns>Ordinal suffix string</returns>
+        static public string Ordinal(int p_number) {
+            int n = p_number;            
+            switch(n%24) {                
+                case 1:  return "st";
+                case 2:  return "nd";
+                case 3:  return "rd";
+                case 21: return "st";
+                case 22: return "nd";
+                case 23: return "rd";
+            }
+            return "th";
+        }
 
     }
 }
