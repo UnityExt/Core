@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace UnityExt.Core.Motion {
+namespace UnityExt.Core.Animation {
 
     #region enum AnimationWrapMode
 
@@ -28,7 +28,6 @@ namespace UnityExt.Core.Motion {
     #endregion
 
     #region class Tween
-
     /// <summary>
     /// Tweens are timer extensions that upon receiving a 'target' object and its 'property' interpolates it during the timer execution.
     /// It will blend the 'from' 'to' values using an EasingFunction or AnimationCurve that maps the [0,1] progress to a new [0,1] actually applying the interpolation.
@@ -629,11 +628,9 @@ namespace UnityExt.Core.Motion {
         #endregion
 
     }
-
     #endregion
 
     #region class Tween<T>
-
     /// <summary>
     /// Extension of the tween class allowing specifying the type of the property's value ranges.
     /// </summary>
@@ -641,7 +638,6 @@ namespace UnityExt.Core.Motion {
     public class Tween<T> : Tween {
     
         #region Get/Set
-
         /// <summary>
         /// Returns the interpolator cast to the desired data type manipulation. If a not matching type is used, null is returned.
         /// </summary>
@@ -668,13 +664,9 @@ namespace UnityExt.Core.Motion {
         /// Get/Set the starting value of the animation.
         /// </summary>
         public T from { get { return tween==null ? default : tween.interpolator.from; } set { if(tween!=null) { tween.deferredFromValue=false; tween.interpolator.from=value; } } }
-
-
-
         #endregion
 
         #region CTOR
-
         /// <summary>
         /// Creates a new Tween to animate 'property' of a 'target' object.
         /// </summary>
@@ -729,7 +721,6 @@ namespace UnityExt.Core.Motion {
             //Then keep going with init.
             CreateTween(p_wrap);
         }
-
         #endregion
 
         #region Restart
@@ -778,7 +769,6 @@ namespace UnityExt.Core.Motion {
 
         #endregion
     }
-
     #endregion
 
 }

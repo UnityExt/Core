@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using UnityExt.Core.Components;
+using UnityEngine;
 
-namespace UnityExt.Core.Motion {
+namespace UnityExt.Core.Animation {
 
     #region interface IInterpolator
 
@@ -34,15 +36,16 @@ namespace UnityExt.Core.Motion {
     public class FloatInterpolator  : ValueTypeInterpolator<float > { public FloatInterpolator () : base() { } override protected void OnLerp(float p_ratio) { result = (float )LerpAux(        from,        to,p_ratio); } }
     public class DoubleInterpolator : ValueTypeInterpolator<double> { public DoubleInterpolator() : base() { } override protected void OnLerp(float p_ratio) { result = (double)LerpAux(        from,        to,p_ratio); } }
 
-    public class Vector2Interpolator    : ValueTypeInterpolator<UnityEngine.Vector2   > { public Vector2Interpolator   () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    public class Vector3Interpolator    : ValueTypeInterpolator<UnityEngine.Vector3   > { public Vector3Interpolator   () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    public class Vector4Interpolator    : ValueTypeInterpolator<UnityEngine.Vector4   > { public Vector4Interpolator   () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    public class ColorInterpolator      : ValueTypeInterpolator<UnityEngine.Color     > { public ColorInterpolator     () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    public class RectInterpolator       : ValueTypeInterpolator<UnityEngine.Rect      > { public RectInterpolator      () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    public class Vector2IntInterpolator : ValueTypeInterpolator<UnityEngine.Vector2Int> { public Vector2IntInterpolator() : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    public class Vector3IntInterpolator : ValueTypeInterpolator<UnityEngine.Vector3Int> { public Vector3IntInterpolator() : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    public class QuaternionInterpolator : ValueTypeInterpolator<UnityEngine.Quaternion> { public QuaternionInterpolator() : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
-    
+    public class Vector2Interpolator         : ValueTypeInterpolator<Vector2   > { public Vector2Interpolator         () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class Vector3Interpolator         : ValueTypeInterpolator<Vector3   > { public Vector3Interpolator         () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class Vector4Interpolator         : ValueTypeInterpolator<Vector4   > { public Vector4Interpolator         () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class ColorInterpolator           : ValueTypeInterpolator<Color     > { public ColorInterpolator           () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class RectInterpolator            : ValueTypeInterpolator<Rect      > { public RectInterpolator            () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class Vector2IntInterpolator      : ValueTypeInterpolator<Vector2Int> { public Vector2IntInterpolator      () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class Vector3IntInterpolator      : ValueTypeInterpolator<Vector3Int> { public Vector3IntInterpolator      () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class QuaternionInterpolator      : ValueTypeInterpolator<Quaternion> { public QuaternionInterpolator      () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+    public class TransformVectorInterpolator : ValueTypeInterpolator<TransformVector       > { public TransformVectorInterpolator () : base() { } override protected void OnLerp(float p_ratio) { result = LerpAux(        from,        to,p_ratio); } }
+
     #endregion
 
     #region abstract class ValueTypeInterpolator<T>
@@ -64,14 +67,15 @@ namespace UnityExt.Core.Motion {
             object res = null;            
             if(typeof(T) == typeof(float  ))  res = new FloatInterpolator (); else
             if(typeof(T) == typeof(int    ))  res = new IntInterpolator   (); else
-            if(typeof(T) == typeof(UnityEngine.Vector2   ))  res = new Vector2Interpolator    ();   else
-            if(typeof(T) == typeof(UnityEngine.Vector3   ))  res = new Vector3Interpolator    ();   else
-            if(typeof(T) == typeof(UnityEngine.Quaternion))  res = new QuaternionInterpolator ();   else            
-            if(typeof(T) == typeof(UnityEngine.Vector4   ))  res = new Vector4Interpolator    ();   else
-            if(typeof(T) == typeof(UnityEngine.Color     ))  res = new ColorInterpolator      ();   else
-            if(typeof(T) == typeof(UnityEngine.Rect      ))  res = new RectInterpolator       ();   else
-            if(typeof(T) == typeof(UnityEngine.Vector2Int))  res = new Vector2IntInterpolator ();   else
-            if(typeof(T) == typeof(UnityEngine.Vector3Int))  res = new Vector3IntInterpolator ();   else
+            if(typeof(T) == typeof(Vector2   ))  res = new Vector2Interpolator         ();   else
+            if(typeof(T) == typeof(Vector3   ))  res = new Vector3Interpolator         ();   else
+            if(typeof(T) == typeof(Quaternion))  res = new QuaternionInterpolator      ();   else            
+            if(typeof(T) == typeof(Vector4   ))  res = new Vector4Interpolator         ();   else
+            if(typeof(T) == typeof(Color     ))  res = new ColorInterpolator           ();   else
+            if(typeof(T) == typeof(Rect      ))  res = new RectInterpolator            ();   else
+            if(typeof(T) == typeof(Vector2Int))  res = new Vector2IntInterpolator      ();   else
+            if(typeof(T) == typeof(Vector3Int))  res = new Vector3IntInterpolator      ();   else
+            if(typeof(T) == typeof(TransformVector       ))  res = new TransformVectorInterpolator ();   else
             if(typeof(T) == typeof(double ))  res = new DoubleInterpolator(); else
             if(typeof(T) == typeof(long   ))  res = new LongInterpolator  (); else
             if(typeof(T) == typeof(uint   ))  res = new UIntInterpolator  (); else
@@ -108,7 +112,7 @@ namespace UnityExt.Core.Motion {
         /// <summary>
         /// Easing Curve to apply into the ratio
         /// </summary>
-        public UnityEngine.AnimationCurve curve;
+        public AnimationCurve curve;
 
         /// <summary>
         /// CTOR.
@@ -138,14 +142,14 @@ namespace UnityExt.Core.Motion {
         /// <param name="p_from"></param>
         /// <param name="p_to"></param>
         /// <param name="p_easing"></param>
-        public void Set(T p_from,T p_to,UnityEngine.AnimationCurve p_curve) { Set(p_from,p_to,null,p_curve); }
+        public void Set(T p_from,T p_to,AnimationCurve p_curve) { Set(p_from,p_to,null,p_curve); }
 
         /// <summary>
         /// Sets this interpolator properties.
         /// </summary>
         /// <param name="p_from"></param>
         /// <param name="p_easing"></param>
-        public void Set(T p_from,UnityEngine.AnimationCurve p_curve) { Set(p_from,default(T),null,p_curve); }
+        public void Set(T p_from,AnimationCurve p_curve) { Set(p_from,default(T),null,p_curve); }
 
         /// <summary>
         /// Sets this interpolator properties.
@@ -167,7 +171,7 @@ namespace UnityExt.Core.Motion {
         /// <param name="p_to"></param>
         /// <param name="p_easing"></param>
         /// <param name="p_curve"></param>
-        private void Set(T p_from,T p_to,Func<float,float> p_easing,UnityEngine.AnimationCurve p_curve) {
+        private void Set(T p_from,T p_to,Func<float,float> p_easing,AnimationCurve p_curve) {
             from   = p_from;
             to     = p_to;
             easing = p_easing;
@@ -208,14 +212,15 @@ namespace UnityExt.Core.Motion {
         protected double LerpAux(double p_from,double p_to,double p_ratio) { return p_from + ((p_to-p_from) * p_ratio); }
         protected float  LerpAux(float  p_from,float  p_to,float  p_ratio) { return p_from + ((p_to-p_from) * p_ratio); }
 
-        protected UnityEngine.Vector2    LerpAux(UnityEngine.Vector2    p_from,UnityEngine.Vector2    p_to,float p_ratio) { return UnityEngine.Vector2.LerpUnclamped    (p_from,p_to,p_ratio); }        
-        protected UnityEngine.Vector3    LerpAux(UnityEngine.Vector3    p_from,UnityEngine.Vector3    p_to,float p_ratio) { return UnityEngine.Vector3.LerpUnclamped    (p_from,p_to,p_ratio); }
-        protected UnityEngine.Vector4    LerpAux(UnityEngine.Vector4    p_from,UnityEngine.Vector4    p_to,float p_ratio) { return UnityEngine.Vector4.LerpUnclamped    (p_from,p_to,p_ratio); }
-        protected UnityEngine.Color      LerpAux(UnityEngine.Color      p_from,UnityEngine.Color      p_to,float p_ratio) { return UnityEngine.Color.LerpUnclamped      (p_from,p_to,p_ratio); }
-        protected UnityEngine.Quaternion LerpAux(UnityEngine.Quaternion p_from,UnityEngine.Quaternion p_to,float p_ratio) { return UnityEngine.Quaternion.SlerpUnclamped(p_from,p_to,p_ratio); }
-        protected UnityEngine.Vector2Int LerpAux(UnityEngine.Vector2Int p_from,UnityEngine.Vector2Int p_to,float p_ratio) { UnityEngine.Vector2 v0 = p_from; UnityEngine.Vector2 v1 = p_to; v0 = UnityEngine.Vector2.LerpUnclamped(v0,v1,p_ratio); return new UnityEngine.Vector2Int((int)v0.x,(int)v0.y          ); }
-        protected UnityEngine.Vector3Int LerpAux(UnityEngine.Vector3Int p_from,UnityEngine.Vector3Int p_to,float p_ratio) { UnityEngine.Vector3 v0 = p_from; UnityEngine.Vector3 v1 = p_to; v0 = UnityEngine.Vector3.LerpUnclamped(v0,v1,p_ratio); return new UnityEngine.Vector3Int((int)v0.x,(int)v0.y,(int)v0.z); }        
-        protected UnityEngine.Rect       LerpAux(UnityEngine.Rect       p_from,UnityEngine.Rect       p_to,float p_ratio) { UnityEngine.Vector4 v0 = new UnityEngine.Vector4(p_from.x,p_from.y,p_from.width,p_from.height); UnityEngine.Vector4 v1 = new UnityEngine.Vector4(p_to.x,p_to.y,p_to.width,p_to.height); v0 = UnityEngine.Vector4.LerpUnclamped(v0,v1,p_ratio); return new UnityEngine.Rect(v0.x,v0.y,v0.z,v0.w); }
+        protected Vector2    LerpAux(Vector2    p_from,Vector2    p_to,float p_ratio) { return Vector2.LerpUnclamped    (p_from,p_to,p_ratio); }        
+        protected Vector3    LerpAux(Vector3    p_from,Vector3    p_to,float p_ratio) { return Vector3.LerpUnclamped    (p_from,p_to,p_ratio); }
+        protected Vector4    LerpAux(Vector4    p_from,Vector4    p_to,float p_ratio) { return Vector4.LerpUnclamped    (p_from,p_to,p_ratio); }
+        protected Color      LerpAux(Color      p_from,Color      p_to,float p_ratio) { return Color.LerpUnclamped      (p_from,p_to,p_ratio); }
+        protected Quaternion LerpAux(Quaternion p_from,Quaternion p_to,float p_ratio) { return Quaternion.SlerpUnclamped(p_from,p_to,p_ratio); }
+        protected Vector2Int LerpAux(Vector2Int p_from,Vector2Int p_to,float p_ratio) { Vector2 v0 = p_from; Vector2 v1 = p_to; v0 = Vector2.LerpUnclamped(v0,v1,p_ratio); return new Vector2Int((int)v0.x,(int)v0.y          ); }
+        protected Vector3Int LerpAux(Vector3Int p_from,Vector3Int p_to,float p_ratio) { Vector3 v0 = p_from; Vector3 v1 = p_to; v0 = Vector3.LerpUnclamped(v0,v1,p_ratio); return new Vector3Int((int)v0.x,(int)v0.y,(int)v0.z); }        
+        protected Rect       LerpAux(Rect       p_from,Rect       p_to,float p_ratio) { Vector4 v0 = new Vector4(p_from.x,p_from.y,p_from.width,p_from.height); Vector4 v1 = new Vector4(p_to.x,p_to.y,p_to.width,p_to.height); v0 = Vector4.LerpUnclamped(v0,v1,p_ratio); return new Rect(v0.x,v0.y,v0.z,v0.w); }
+        protected TransformVector        LerpAux(TransformVector        p_from,TransformVector        p_to,float p_ratio) { return TransformVector.Lerp(p_from,p_to,p_ratio); }
 
         #endregion
 
@@ -293,7 +298,7 @@ namespace UnityExt.Core.Motion {
         /// <param name="p_from">Start value</param>
         /// <param name="p_to">End value</param>
         /// <param name="p_curve">AnimationCurve easing.</param>
-        public PropertyInterpolator(object p_target,string p_property,T p_from,T p_to,UnityEngine.AnimationCurve p_curve) : this(p_target,p_property,p_from,p_to,false) { if(valid) interpolator.Set(p_from,p_to,p_curve );   }
+        public PropertyInterpolator(object p_target,string p_property,T p_from,T p_to,AnimationCurve p_curve) : this(p_target,p_property,p_from,p_to,false) { if(valid) interpolator.Set(p_from,p_to,p_curve );   }
         
         /// <summary>
         /// Creates a new property interpolator that uses reflection to interpolate and modifies dynamic properties. The starting value is only sampled at interpolation start
@@ -311,7 +316,7 @@ namespace UnityExt.Core.Motion {
         /// <param name="p_property">Property to interpolate.</param>        
         /// <param name="p_to">End value</param>
         /// <param name="p_curve">AnimationCurve easing.</param>
-        public PropertyInterpolator(object p_target,string p_property,         T p_to,UnityEngine.AnimationCurve p_curve) : this(p_target,p_property,p_to  ,p_to,true)  { if(valid) interpolator.Set(p_to  ,p_to,p_curve );   }
+        public PropertyInterpolator(object p_target,string p_property,         T p_to,AnimationCurve p_curve) : this(p_target,p_property,p_to  ,p_to,true)  { if(valid) interpolator.Set(p_to  ,p_to,p_curve );   }
 
         #region Internal CTOR
 
