@@ -163,6 +163,62 @@ namespace UnityExt.Core.IO {
             }
             return null;
         }
+        /// <summary>
+        /// Helper to perform hashes calculations on streams.
+        /// </summary>        
+        static protected Activity InternalHash(bool p_async,Type p_hash_type,Stream p_from,Stream p_to,bool p_base64,Action p_callback = null,bool p_close=true) {
+            Stream src = p_from;
+            Stream dst = p_to;
+            if(src == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            if(dst == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+
+            HashAlgorithm h = null;
+            if(p_hash_type == typeof(KeyedHashAlgorithm)) h = KeyedHashAlgorithm.Create();
+            if(p_hash_type == typeof(RIPEMD160         )) h = RIPEMD160.Create();
+            if(p_hash_type == typeof(MD5               )) h = MD5.Create();
+            if(p_hash_type == typeof(SHA1              )) h = SHA1.Create();
+            if(p_hash_type == typeof(SHA256            )) h = SHA256.Create();
+            if(p_hash_type == typeof(SHA384            )) h = SHA384.Create();
+            if(p_hash_type == typeof(SHA512            )) h = SHA512.Create();
+
+            if(h == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+
+            if(p_base64) dst = PipeBase64Conversion(dst, SerializerMode.Serialize, SerializerAttrib.Base64);
+
+            if(p_async) {                
+                Activity task =
+                Activity.Run(
+                delegate(Activity a1) {
+                    //Compute and write
+                    byte[] res = h.ComputeHash(src);
+                    dst.Write(res,0,res.Length);
+                    dst.Flush();
+                    if(dst is CryptoStream) { CryptoStream dst_cs = (CryptoStream)dst; dst_cs.FlushFinalBlock(); }
+                    if(p_close) dst.Close();
+                    //Run in main thread
+                    task = 
+                    Activity.Run(delegate(Activity a2) { 
+                        if(p_callback!=null) p_callback();
+                        return false;
+                    },ActivityContext.Update);
+                    task.id = "serializer-hash-complete";
+
+                    return false;
+                }, ActivityContext.Thread);
+                task.id = "serializer-hash-create";
+                return task;
+            }
+            else {
+                //Compute and write
+                byte[] res = h.ComputeHash(src);
+                dst.Write(res,0,res.Length);
+                dst.Flush();
+                if(dst is CryptoStream) { CryptoStream dst_cs = (CryptoStream)dst; dst_cs.FlushFinalBlock(); }
+                if(p_close) dst.Close();
+            }
+            return null;
+        }
+
         #endregion
 
         #region Serialize
@@ -223,6 +279,34 @@ namespace UnityExt.Core.IO {
         static public Activity DeserializeAsync(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {  return InternalTask(true, SerializerMode.Deserialize,p_from,p_to,null      ,p_attribs,p_callback); }
         static public Activity DeserializeAsync(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
         static public Activity DeserializeAsync(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
+        #endregion
+
+        #region Hash        
+        /// <summary>
+        /// Applies hashing operation from a source stream into a destination stream.
+        /// </summary>
+        /// <typeparam name="T">HashAlgorithm Type</typeparam>
+        /// <param name="p_from">Source information to be hashed</param>
+        /// <param name="p_to">Destination of the hashing result.</param>
+        /// <param name="p_base64">Flag that tells to convert the hashing result to base64.</param>
+        static public void Hash<T>(Stream p_from,Stream p_to,bool p_base64=false) where T : HashAlgorithm { InternalHash(false,typeof(T),p_from,p_to,p_base64,null); }        
+        static public void Hash<T>(string p_from,string p_to,bool p_base64=false) where T : HashAlgorithm { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); InternalHash(false,typeof(T),src,dst,p_base64,null); src.Close(); }
+        static public Activity HashAsync<T>(Stream p_from,Stream p_to,bool p_base64=false,Action p_callback=null) where T : HashAlgorithm { return InternalHash(false,typeof(T),p_from,p_to,p_base64,p_callback); }        
+        static public Activity HashAsync<T>(string p_from,string p_to,bool p_base64=false,Action p_callback=null) where T : HashAlgorithm { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); Activity a = InternalHash(false,typeof(T),src,dst,p_base64,p_callback); src.Close(); return a; }
+        static public string Hash<T>(string p_input) where T : HashAlgorithm { 
+            StreamWriter sw = new StreamWriter(new MemoryStream());
+            sw.Write(p_input);
+            sw.Flush();
+            sw.BaseStream.Position=0; 
+            MemoryStream ms = new MemoryStream();                        
+            InternalHash(false,typeof(T),sw.BaseStream,ms,true,null,false);
+            sw.Close();
+            ms.Position=0;
+            StreamReader sr = new StreamReader(ms);
+            string res =  sr.ReadToEnd();
+            sr.Close();
+            return res;
+        }
         #endregion
 
         #region Stream Pipeline

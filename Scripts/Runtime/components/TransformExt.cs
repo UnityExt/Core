@@ -6,6 +6,96 @@ using Component = UnityEngine.Component;
 
 namespace UnityExt.Core.Components {
 
+    #region struct TransformVector
+    /// <summary>
+    /// Vector that describes the 3 components of a transform.
+    /// </summary>
+    public struct TransformVector {
+
+        #region static
+        /// <summary>
+        /// Linear interpolates 2 Transform Vectors.
+        /// </summary>
+        /// <param name="a">From TransformVector</param>
+        /// <param name="b">To TransformVector</param>
+        /// <param name="t">Ratio</param>
+        /// <returns>Interpolated TransformVector</returns>
+        static public TransformVector Lerp(TransformVector a,TransformVector b,float t) {
+            TransformVector res = new TransformVector();
+            res.position = a.position + (b.position-a.position) * t;
+            res.rotation = Quaternion.Slerp(a.rotation,b.rotation,t);
+            res.scale    = a.scale    + (b.scale   -a.scale   )*t;
+            return res;
+        }
+        #endregion
+
+        /// <summary>
+        /// Position
+        /// </summary>
+        public Vector3    position;
+        /// <summary>
+        /// Rotation
+        /// </summary>
+        public Quaternion rotation;
+        /// <summary>
+        /// Scale
+        /// </summary>
+        public Vector3    scale;
+
+        #region CTOR
+        /// <summary>
+        /// Creates a Transform Vector from a Transform, either with local/global reference.
+        /// </summary>
+        /// <param name="p_target">Target Transform</param>
+        /// <param name="p_local">Flag that tells if local/global vector data must be used.</param>
+        public TransformVector(Transform p_target,bool p_local=true) : this(p_local ? p_target.localPosition : p_target.position,p_local ? p_target.localRotation : p_target.rotation,p_local ? p_target.localScale : p_target.lossyScale) { }
+        /// <summary>
+        /// Creates a Transform Vector from its 3 components.
+        /// </summary>
+        /// <param name="p_position"></param>
+        /// <param name="p_rotation"></param>
+        /// <param name="p_scale"></param>
+        public TransformVector(Vector3 p_position,Quaternion p_rotation,Vector3 p_scale) { position = p_position; rotation = p_rotation; scale = p_scale; }
+        public TransformVector(Vector3 p_position,Quaternion p_rotation) : this(p_position,p_rotation,Vector3.one) { }
+        /// <summary>
+        /// Creates a TransformVector from another one.
+        /// </summary>
+        /// <param name="p_target"></param>
+        public TransformVector(TransformVector p_target) : this(p_target.position,p_target.rotation,p_target.scale) { }
+        #endregion
+
+        /// <summary>
+        /// Applies this vector information into a transform.
+        /// </summary>
+        /// <param name="p_target">Transform to modify</param>
+        /// <param name="p_local">Local or Global coordinates.</param>
+        public void Set(Transform p_target,bool p_local=true) {
+            if(p_local) {
+                p_target.localPosition = position;
+                p_target.localScale    = scale;
+                p_target.localRotation = rotation;
+            }
+            else {
+                p_target.position   = position;
+                p_target.rotation   = rotation;
+                p_target.localScale = scale;                    
+            }
+        }
+
+        /// <summary>
+        /// Fetch the information from the Transform and populate this vector.
+        /// </summary>
+        /// <param name="p_target">Target Transform</param>
+        /// <param name="p_local">Local or Global coordinates.</param>
+        public void Get(Transform p_target,bool p_local=true) {
+            position = p_local ? p_target.localPosition : p_target.position;
+            rotation = p_local ? p_target.localRotation : p_target.rotation;
+            scale    = p_local ? p_target.localScale    : p_target.lossyScale;
+        }
+
+    }
+    #endregion
+
     /// <summary>
     /// Extension class to improve the basic functionality of the Transform component.
     /// </summary>

@@ -11,6 +11,11 @@ namespace UnityExt.Core {
     /// </summary>
     public static class Colorf {
 
+        /// <summary>
+        /// One over 255
+        /// </summary>
+        internal const float InvByte = 0.003921568627451f;
+
         #region ColorExt
         static string[] m_byte_hex_lut = new string[255];
         
@@ -214,11 +219,6 @@ namespace UnityExt.Core {
         /// </summary>
         public static Color unityFocusBlue { get { return Colorf.RGBToColor(0x3357d9,1f); } }
         #endregion
-
-        /// <summary>
-        /// One over 255
-        /// </summary>
-        internal const float InvByte = 0.003921568627451f;
 
         #region byte channel -> Color
         /// <summary>
