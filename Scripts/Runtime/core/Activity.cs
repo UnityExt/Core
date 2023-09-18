@@ -22,9 +22,13 @@ namespace UnityExt.Core {
     /// </summary>
     public enum ActivityContext {
         /// <summary>
+        /// No context
+        /// </summary>
+        None=-1,
+        /// <summary>
         /// All contexts wild card.
         /// </summary>
-        All = -1,
+        All = 0,
         /// <summary>
         /// Runs inside Monobehaivour.Update
         /// </summary>
@@ -52,7 +56,11 @@ namespace UnityExt.Core {
         /// <summary>
         /// Runs the job passed as parameter in a loop and using run
         /// </summary>
-        Job
+        Job,
+        /// <summary>
+        /// Runs inside EditorApplication.update
+        /// </summary>
+        Editor
     }
 
     #endregion
@@ -94,7 +102,7 @@ namespace UnityExt.Core {
     public class Activity : INotifyCompletion, IStatusProvider, IProgressProvider {
 
         #region Manager
-
+        /*
         /// <summary>
         /// Behaviour to handle all activity  executions.
         /// </summary>        
@@ -150,7 +158,8 @@ namespace UnityExt.Core {
             #endif
 
         }
-
+        //*/
+        /*
         /// <summary>
         /// Reference to the global Activity manager.
         /// </summary>
@@ -189,24 +198,16 @@ namespace UnityExt.Core {
             }
         }
         static private Manager m_manager;
+        //*/
 
         #region Manager Inspector
         #if UNITY_EDITOR
-
+        /*
         /// <summary>
         /// Class to handle the activity manager inspector.
         /// </summary>
         [CustomEditor(typeof(Manager))]
         public class ManagerInspector : Editor {
-
-            /*
-            /// <summary>
-            /// CTOR.
-            /// </summary>
-            protected void OnEnable() {
-                
-            }
-            //*/
 
             /// <summary>
             /// GUI
@@ -430,7 +431,7 @@ namespace UnityExt.Core {
             }
 
         }
-
+        //*/
         #endif
         #endregion
 
@@ -439,6 +440,22 @@ namespace UnityExt.Core {
         #region static
 
         /// <summary>
+        /// CTOR
+        /// </summary>
+        static Activity() {
+            //Warmup non-thread-safe data
+            m_app_persistent_dp = Application.persistentDataPath;
+            m_app_platform      = Application.platform.ToString().ToLower();
+        }
+        static internal string m_app_persistent_dp;
+        static internal string m_app_platform;
+
+        /// <summary>
+        /// Reference to the activity manager.
+        /// </summary>
+        static public ActivityManager manager { get { return ActivityManager.manager; } }
+        
+        /// <summary>
         /// Execution time slice for async nodes.
         /// </summary>
         static public int asyncTimeSlice = 4;
@@ -446,7 +463,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Maximum created threads for paralell nodes.
         /// </summary>
-        static public int maxThreadCount = Mathf.Max(2,Mathf.Min(Environment.ProcessorCount,6));
+        static public int maxThreadCount = Mathf.Max(1,Environment.ProcessorCount/4);
 
         #region Add/Remove/Find
 
@@ -454,18 +471,21 @@ namespace UnityExt.Core {
         /// Adds any object implementing the interfaces for exection.
         /// </summary>
         /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
-        static public void Add(object p_node) { if(manager)manager.handler.AddInterface(p_node); }
+        //static public void Add(object p_node) { if(manager)manager.handler.AddInterface(p_node); }
+        static public void Add(object p_node) { if(manager)manager.AddInterface(p_node); }
 
         /// <summary>
         /// Removes any object implementing the interfaces for exection.
         /// </summary>
         /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
-        static public void Remove(object p_node) { if(m_manager)m_manager.handler.RemoveInterface(p_node); }
+        //static public void Remove(object p_node) { if(m_manager)m_manager.handler.RemoveInterface(p_node); }
+        static public void Remove(object p_node) { if(manager)manager.RemoveInterface(p_node); }
 
         /// <summary>
         /// Removes all activities and interfaces from exection.
         /// </summary>
-        static public void Kill() { if(m_manager)m_manager.handler.Clear(); }
+        //static public void Kill() { if(m_manager)m_manager.handler.Clear(); }
+        static public void Kill() { if(manager)manager.Kill(); }
 
         /// <summary>
         /// Searches for a single activity by id and context.
@@ -474,7 +494,8 @@ namespace UnityExt.Core {
         /// <param name="p_context">Specific context to be searched.</param>
         /// <typeparam name="T">Activity derived type.</typeparam>
         /// <returns>Activity found or null</returns>
-        static public T Find<T>(string p_id,ActivityContext p_context) where T : Activity { if(manager) return manager.handler.Find<T>(p_id,p_context); return null; }
+        //static public T Find<T>(string p_id,ActivityContext p_context) where T : Activity { if(manager) return manager.handler.Find<T>(p_id,p_context); return null; }
+        static public T Find<T>(string p_id,ActivityContext p_context) where T : Activity { if(manager) return manager.Find<T>(p_id,p_context); return null; }
 
         /// <summary>
         /// Searches for a single activity by id in all contexts.
@@ -491,7 +512,24 @@ namespace UnityExt.Core {
         /// <param name="p_context">Specific context to be searched.</param>
         /// <typeparam name="T">Activity derived type.</typeparam>
         /// <returns>List of results or empty list.</returns>
-        static public List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity { List<T> res=null; if(manager) res = manager.handler.FindAll<T>(p_id,p_context); return res==null ? new List<T>() : res; }
+        //static public List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity { List<T> res=null; if(manager) res = manager.handler.FindAll<T>(p_id,p_context); return res==null ? new List<T>() : res; }
+        static public List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity {
+            List<T> res = null;
+            if(manager) {
+                if(p_context == ActivityContext.All) {
+                    res = new List<T>();
+                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.Update     ));
+                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.LateUpdate ));
+                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.FixedUpdate));
+                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.Thread     ));
+                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.Async      ));
+                }
+                else {
+                    res = manager.FindAll<T>(p_id,p_context);
+                }                                
+            }
+            return res == null ? new List<T>() : res;
+        }
 
         /// <summary>
         /// Searches for all activities matching the context.
@@ -567,6 +605,11 @@ namespace UnityExt.Core {
         #endregion
 
         #endregion
+
+        /// <summary>
+        /// Reference to the process containing this activity
+        /// </summary>
+        internal ActivityProcess process { get; set; }
 
         /// <summary>
         /// Id of this Activity.
@@ -736,7 +779,8 @@ namespace UnityExt.Core {
                 m_yield_ms    = 0;
             }            
             //Add to execution queue
-            if(manager)manager.handler.AddActivity(this);            
+            //if(manager)manager.handler.AddActivity(this);            
+            if(manager)manager.Add(this);            
         }
         private void OnTaskCompleteDummy() {    
             //Sleep is inside task thread, so safe to use
@@ -749,7 +793,8 @@ namespace UnityExt.Core {
         /// <summary>
         /// Removes this activity from the execution pool.
         /// </summary>
-        public void Stop() { if(manager)manager.handler.RemoveActivity(this); }
+        //public void Stop() { if(manager)manager.handler.RemoveActivity(this); }
+        public void Stop() { if(manager)manager.Remove(this); }
 
         /// <summary>
         /// Executes one loop step.
@@ -905,7 +950,7 @@ namespace UnityExt.Core {
         /// Returns this activity execution state converted to status flags.
         /// </summary>
         /// <returns>Current activity status</returns>
-        public StatusType GetStatus() {
+        virtual public StatusType GetStatus() {
             switch(state) {
                 case ActivityState.Idle:
                 case ActivityState.Queued:   return StatusType.Idle;

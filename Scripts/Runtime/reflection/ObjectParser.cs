@@ -99,7 +99,7 @@ namespace UnityExt.Core.IO {
         //public ObjectMemberType members =  ObjectMemberType.Public | ObjectMemberType.Field;
 
         /// <summary>
-        /// Flag that tells the parser to skip evaluating fields when they value is null
+        /// Flag that tells the parser to skip evaluating fields when their value is null
         /// </summary>
         public bool ignoreNull;
 

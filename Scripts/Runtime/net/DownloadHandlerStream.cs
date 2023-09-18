@@ -35,12 +35,12 @@ namespace UnityExt.Core.Net {
             /// <summary>
             /// Size in bytes
             /// </summary>
-            public int bytesTotal { get; private set; }
+            public ulong bytesTotal { get; private set; }
 
             /// <summary>
             /// Bytes downloaded
             /// </summary>
-            public int bytesLoaded { get; private set; }
+            public ulong bytesLoaded { get; private set; }
 
             /// <summary>
             /// Returns the progress
@@ -87,12 +87,14 @@ namespace UnityExt.Core.Net {
             /// <summary>
             /// <inheritdoc/>
             /// </summary>
-            protected override void ReceiveContentLength(int p_content_length) {
+            protected override void ReceiveContentLengthHeader(ulong p_content_length) {
                 bytesTotal = p_content_length;
-                if(stream is FileStream) return;                
-                MemoryStream ms = (MemoryStream)stream; 
-                ms.Capacity = p_content_length; 
-                ms.Position = 0;             
+                stream.Position=0;
+                if(stream is FileStream) return;
+                if(stream is MemoryStream) {
+                    MemoryStream ms = (MemoryStream)stream; 
+                    ms.Capacity = (int)p_content_length; 
+                }                                
             }
 
             /// <summary>
@@ -100,7 +102,7 @@ namespace UnityExt.Core.Net {
             /// </summary>
             protected override bool ReceiveData(byte[] p_data,int p_length) {
                 if(stream==null) return false;
-                bytesLoaded += p_length;                                
+                bytesLoaded += (ulong)p_length;                                
                 //Fake increase progress in case bytes-total is not available yet
                 if(bytesTotal<=0) m_progress += (1f-m_progress)*0.01f;                                        
                 stream.Write(p_data,0,p_length);

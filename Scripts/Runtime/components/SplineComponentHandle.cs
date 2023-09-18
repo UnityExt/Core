@@ -370,7 +370,7 @@ namespace UnityExt.Core {
             SerializedObject so = new SerializedObject(schl);
             SerializedProperty sp;
             int vi;
-            float vf;
+            //float vf;
 
             if(tpp>=2) {             
                 GUILayout.Space(10f);

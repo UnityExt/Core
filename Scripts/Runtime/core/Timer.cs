@@ -36,25 +36,25 @@ namespace UnityExt.Core {
     public class Timer : Activity, IProgressProvider {
 
         #region static
-
         /// <summary>
         /// Static CTOR
         /// </summary>
         static Timer() {
             //Start the thread based timer upon first usage.
             if(m_clock_sys == null) { m_clock_sys = new System.Diagnostics.Stopwatch(); m_clock_sys.Start(); }
+            
         }  
+        
         /// <summary>
         /// Single system time instance
         /// </summary>
         static System.Diagnostics.Stopwatch m_clock_sys;
 
         #region Atomic Clock
-
         /// <summary>
         /// Path to be used on the creation of an atomic timer.
         /// </summary>
-        static public string AtomicClockRoot = $"{Application.persistentDataPath}/unityex/{Application.platform.ToString().ToLower()}/timer/";
+        static public string AtomicClockRoot = $"{m_app_persistent_dp}/unityex/{m_app_platform}/timer/";
 
         /// <summary>
         /// Default atomic clock file name
@@ -90,7 +90,7 @@ namespace UnityExt.Core {
             //Fetch file info
             FileInfo fi = new FileInfo(fp);            
             if(!fi.Exists) {
-                FileStream fs = File.Open(fp, FileMode.Create, FileAccess.ReadWrite); 
+                FileStream fs = File.Open(fp, FileMode.Create, FileAccess.ReadWrite,FileShare.ReadWrite); 
                 //Write a byte and close
                 fs.WriteByte(1);                
                 fs.FlushAsync();
@@ -139,12 +139,10 @@ namespace UnityExt.Core {
         }
         static private string tmp_clock_fn = "$sys-clock";
         static private FileInfo   tmp_fi  = null;
-        static private FileStream tmp_fs  = null;
-        
+        static private FileStream tmp_fs  = null;        
         #endregion
         
         #region Run/Loop
-
         /// <summary>
         /// Helper
         /// </summary>        
@@ -297,7 +295,6 @@ namespace UnityExt.Core {
         #endregion
 
         #region Delay
-
         /// <summary>
         /// Creates an executes a timer for 'await' scenarios.
         /// </summary>
@@ -795,7 +792,6 @@ namespace UnityExt.Core {
         #endregion
 
         #region Internal Operation
-
         /// <summary>
         /// Handler for enabling
         /// </summary>
@@ -917,7 +913,6 @@ namespace UnityExt.Core {
         #endregion
 
         #region IProgressProvider
-
         /// <summary>
         /// Provides timer execution progress.
         /// </summary>
@@ -928,7 +923,6 @@ namespace UnityExt.Core {
             }
             return base.GetProgress();
         }
-
         #endregion
 
     }

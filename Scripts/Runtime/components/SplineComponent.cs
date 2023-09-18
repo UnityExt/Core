@@ -400,8 +400,15 @@ namespace UnityExt.Core {
 
         internal void EditorUpdateSimulation() {
             if(!simulation_enabled) return;
+            if(!selected) return;
             int hc = closed ? handles.Count : handles.Count-1;
             if(hc<=0) { simulation_enabled = false; return; }
+
+            float dt = Mathf.Min(0.1f,Time.realtimeSinceStartup - m_last_time);
+            if(dt<=0.0f) return;
+
+            m_last_time = Time.realtimeSinceStartup;
+
             if(float.IsNaN(simulation_index))simulation_index=0f;
             Vector3 pos;
             Quaternion rot;
@@ -418,14 +425,25 @@ namespace UnityExt.Core {
             simulation_pos = pos;
             simulation_rot = rot;
             simulation_scl = scl;
-            float dt = Mathf.Min(0.1f,Time.realtimeSinceStartup - m_last_time);
-            m_last_time = Time.realtimeSinceStartup;
+            
             float di = dt;
+
+            /*
+            float dpos = (pos-m_last_pos).magnitude/dt;
+            avgspd.Add(dpos);
+            if(avgspd.Count>8)avgspd.RemoveAt(0);
+            float aspd = 0f;
+            for(int i=0;i<avgspd.Count;i++) aspd += avgspd[i];
+            float ic = avgspd.Count<=0 ? 0f : (1f/(float)avgspd.Count);
+            aspd *= ic;
+            Debug.Log($">>>> {(Mathf.Round(aspd*100f)/100f).ToString("0.00")} m/s {dt}");
+            m_last_pos = pos;
+            //*/
 
             simulation_time += dt;
 
             float drv_m = drv.magnitude;
-            di = (drv_m<=0.001f) ? 0f :  (di/drv_m);
+            di = (drv_m<=0.0001f) ? 0f :  (di/drv_m);
             simulation_index += di * 1f * simulation_speed;
 
             if(simulation_index >= hc) {                    
@@ -439,6 +457,8 @@ namespace UnityExt.Core {
 
         }
         private float m_last_time;
+        private Vector3 m_last_pos;
+        private List<float> avgspd = new List<float>();
         #endif
 
         #region Gizmos

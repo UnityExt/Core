@@ -94,11 +94,13 @@ namespace UnityExt.Core.Net {
         /// Internal.
         /// </summary>
         private List<string> m_fields;
+        private bool m_dirty;
 
         /// <summary>
         /// CTOR.
         /// </summary>
         public HttpQuery() {
+            m_dirty = true;
         }
 
         /// <summary>
@@ -106,6 +108,7 @@ namespace UnityExt.Core.Net {
         /// </summary>
         public void Clear() {
             if(m_fields!=null) m_fields.Clear();
+            m_dirty=true;
         }
 
         #region Add
@@ -124,7 +127,8 @@ namespace UnityExt.Core.Net {
             //k!=""   -> '[val]'
             string v = $"{p_var}{k}={p_value}";
             if(string.IsNullOrEmpty(v)) return;
-            m_fields.Add(v);            
+            m_fields.Add(v);   
+            m_dirty = true;
         }
 
         /// <summary>
@@ -213,8 +217,12 @@ namespace UnityExt.Core.Net {
         /// <param name="p_escaped">Flag that tells to apply char escaping.</param>
         /// <returns></returns>
         public string ToString(bool p_escaped) {            
+            
             int c = m_fields==null ? 0 : m_fields.Count;
             if(c<=0) return "";
+
+            if(!m_dirty) return p_escaped ? m_to_string_cache : m_to_string_cache_escaped;
+
             StringBuilder sb = new StringBuilder();
             for(int i=0;i<c;i++) {
                 string it = m_fields[i];
@@ -222,8 +230,16 @@ namespace UnityExt.Core.Net {
                 sb.Append(it);
             }        
             string sb_s = sb.ToString();
-            return p_escaped ? Uri.EscapeUriString(sb_s) : sb_s;
+
+            m_to_string_cache         = sb_s;
+            m_to_string_cache_escaped = Uri.EscapeUriString(sb_s);
+
+            m_dirty = false;
+
+            return p_escaped ? m_to_string_cache : m_to_string_cache_escaped;
         }
+        private string m_to_string_cache;
+        private string m_to_string_cache_escaped;
 
         /// <summary>
         /// Returns the unescaped query string value.
@@ -518,12 +534,15 @@ namespace UnityExt.Core.Net {
         /// <returns></returns>
         internal  bool FlushStep(bool p_unity_ctx) {
             if(m_flush_list.Count<=0) return false;
+            bool has_flushed = false;
             for(int i=0;i<m_flush_list.Count;i++) {
                 Field it = m_flush_list[i];                
                 if(!FlushField(it,p_unity_ctx)) continue;                
-                m_flush_list.RemoveAt(i--);
-                return true;
+                m_flush_list.RemoveAt(i--);                
+                has_flushed=true;
+                break;
             }
+            if(!has_flushed) return false;
             return m_fields.Count>0;
         }
 
@@ -541,10 +560,10 @@ namespace UnityExt.Core.Net {
             Field f = p_field;
             if(f==null) return true;
             if(f.stream==null) f.SetBaseStream(stream is FileStream);            
-            if(p_unity_ctx) {
+            if(!p_unity_ctx) {
                 bool is_image = (f.type == FieldType.ImageJPEG) || (f.type == FieldType.ImagePNG);
-                if(!is_image)               return false;
-                if(!(f.value is Texture2D)) return false;                                                
+                if(is_image)               return false;
+                if((f.value is Texture))   return false;                                                
             }
             f.Flush();
             //Create the form content
@@ -590,12 +609,12 @@ namespace UnityExt.Core.Net {
             if(m_flush_list!=null) m_flush_list.Clear();
         }
 
-#endregion
+        #endregion
 
     }
-#endregion
+    #endregion
 
-#region class HttpRequest
+    #region class HttpRequest
     /// <summary>
     /// Class that wraps the content of a request/response
     /// </summary>

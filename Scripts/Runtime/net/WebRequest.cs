@@ -10,6 +10,7 @@ using NetStreamContent            = System.Net.Http.StreamContent;
 using NetStringContent            = System.Net.Http.StringContent;
 using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
+using System.Text;
 
 namespace UnityExt.Core.Net {
 
@@ -95,12 +96,9 @@ namespace UnityExt.Core.Net {
         /// <summary>
         /// CTOR.
         /// </summary>
-        static WebRequest() {
-            //Store due threads.
-            m_persistent_path = Application.persistentDataPath;
+        static WebRequest() {            
         }
-        static private string m_persistent_path;
-
+        
         #region Consts
 
         /// <summary>
@@ -128,12 +126,13 @@ namespace UnityExt.Core.Net {
         /// </summary>
         static public float DefaultTimeout = 10f;
 
+        #region File System
         /// <summary>
         /// Returns the folder to write temprary form data.
         /// </summary>
         static public string DataPath {
             get {                
-                string path = $"{m_persistent_path}/unityex/{Application.platform.ToString().ToLower()}/web/";
+                string path = $"{m_app_persistent_dp}/unityex/{m_app_platform}/web/";
                 path.Replace('\\','/').Replace("//","/");
                 if(!Directory.Exists(path)) Directory.CreateDirectory(path);
                 return path;
@@ -165,7 +164,7 @@ namespace UnityExt.Core.Net {
         /// <summary>
         /// Helper to return a temp file name in the proper path
         /// </summary>        
-        static internal string GetTempFilePath(string p_name) { return $"{TempPath}{GetTempFileName(p_name)}"; }
+        static public string GetTempFilePath(string p_name) { return $"{TempPath}{GetTempFileName(p_name)}"; }
 
         /// <summary>
         /// Helper to return a temp file name
@@ -173,11 +172,14 @@ namespace UnityExt.Core.Net {
         static internal string GetTempFileName(string p_name) {
             if(m_rnd==null) m_rnd = new System.Random();
             m_rnd.Next();
-            ulong  hn   = (ulong)(((double)0xffffffff) * m_rnd.NextDouble());
-            string h    = hn.ToString("x");
-            return $"{h}_{p_name}";
+            StringBuilder sb = new StringBuilder();
+            for(int i=0;i<24;i++) sb.Append(m_hash_lut[m_rnd.Next(0,m_hash_lut.Length-1)]);
+            sb.Append("_");
+            sb.Append(p_name);
+            return sb.ToString();
         }
         static private System.Random m_rnd;
+        static private string m_hash_lut = $"0123456789abcdef";
 
         /// <summary>
         /// Flag that tells the machine's filesystem can be used.
@@ -206,17 +208,20 @@ namespace UnityExt.Core.Net {
         /// <summary>
         /// Auxiliary method to give control when to trigger the file system cleanup and initialization.
         /// </summary>
-        static public void InitDataFileSystem() {
+        static public void InitDataFileSystem(bool p_clear_files=false) {
             if(m_fs_init) return;
             m_fs_init=true;
             //Cache FS check result
             bool can_use_fs = CanUseFileSystem;
             WebRequestCache.Load(CachePath);
+            //Delete temp files (not the cache)
             DirectoryInfo di = new DirectoryInfo(TempPath);
             FileInfo[] fl = di.GetFiles("*");
             for(int i=0;i<fl.Length;i++) fl[i].Delete();
         }
         static private bool m_fs_init;
+
+        #endregion
 
         #endregion
 
@@ -462,7 +467,7 @@ namespace UnityExt.Core.Net {
         public string error { get; private set;}
 
         /// <summary>
-        /// Returns the combined progress of upload/download with a weight applied to prioritize download.
+        /// Returns the combined progress of upload/download with a weight applied to prioritize either download or upload.
         /// </summary>
         public float progress { get; private set; }
 
@@ -724,15 +729,15 @@ namespace UnityExt.Core.Net {
                     Activity request_setup = null;
                     Activity form_copy     = null;
                     string   temp_request_fp  = buffer_mode == WebRequestAttrib.FileBuffer ? GetTempFilePath("request")  : "";
-                    string   temp_response_fp = buffer_mode == WebRequestAttrib.FileBuffer ? GetTempFilePath("response") : "";
+                    string   temp_response_fp = buffer_mode == WebRequestAttrib.FileBuffer ? temp_request_fp.Replace("request","response") : "";
                     Predicate<Activity> init_task = null;
+                    //Flag telling the stream in the request was made before
+                    bool is_custom_stream = true;
                     //Initialization loop, will run inside a thread and also unity                    
                     init_task =
                     delegate(Activity a) {
                         //In case of cancel
-                        if(state == WebRequestState.Cancel) return false;
-                        //Flag telling the stream in the request was made before
-                        bool is_custom_stream = true;
+                        if(state == WebRequestState.Cancel) return false;                        
                         //State machine step
                         switch(init_step) {
                             //Initialize
@@ -796,7 +801,7 @@ namespace UnityExt.Core.Net {
                         return true;
                     };
                     //Start the initialization thread
-                    request_setup = Activity.Run(init_task,DataProcessContext);
+                    request_setup = Run(init_task,DataProcessContext);
                     request_setup.id = id+"$request-setup-thread";
                     //Keep running until parallel task runs
                     m_internal_state = State.Processing;
@@ -837,7 +842,7 @@ namespace UnityExt.Core.Net {
                     //Starts the unity request polling task
                     Activity uwr_task = null;
                     uwr_task = 
-                    Activity.Run(
+                    Run(
                     delegate(Activity a) {
                         //In case of cancel
                         if(state == WebRequestState.Cancel) return false;
@@ -1147,6 +1152,42 @@ namespace UnityExt.Core.Net {
             });            
             return parser;
         }        
+        #endregion
+
+        #region IStatusProvider
+        /// <summary>
+        /// Returns this webrequest execution state converted to status flags.
+        /// </summary>
+        /// <returns>Current webrequest status</returns>
+        override public StatusType GetStatus() {
+            switch(state) {
+                case WebRequestState.Idle:             return StatusType.Idle;                
+                case WebRequestState.Start:
+                case WebRequestState.Create:                
+                case WebRequestState.UploadStart:                
+                case WebRequestState.DownloadStart:
+                case WebRequestState.UploadProgress:                
+                case WebRequestState.UploadComplete:
+                case WebRequestState.DownloadProgress:
+                case WebRequestState.DownloadComplete: return StatusType.Running;
+                case WebRequestState.Cached:
+                case WebRequestState.Success:          return StatusType.Success;
+                case WebRequestState.Timeout:
+                case WebRequestState.Error:            return StatusType.Error;                
+                case WebRequestState.Cancel:           return StatusType.Cancelled;
+            }
+            return StatusType.Invalid;
+        }
+        #endregion
+
+        #region IProgressProvider
+        /// <summary>
+        /// Returns this webrequest progress status
+        /// </summary>
+        /// <returns>WebRequest progress related to the download/upload status</returns>
+        override public float GetProgress() {
+            return progress;
+        }
         #endregion
 
     }

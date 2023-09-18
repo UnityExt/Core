@@ -4,6 +4,10 @@ using UnityEngine.SceneManagement;
 using SCG = System.Collections.Generic;
 using System.Threading;
 using System;
+using System.Collections.Generic;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace UnityExt.Core {
 
@@ -11,8 +15,175 @@ namespace UnityExt.Core {
     /// Class that implements the management of a set of interfaces and activities.
     /// It can be used for controlling the execution loop in a different way than the standard one.
     /// </summary>
-    public class ActivityManager {
+    public class ActivityManager : MonoBehaviour {
 
+            
+        /// <summary>
+        /// Reference to the existing manager
+        /// </summary>
+        static internal ActivityManager manager {
+            get {
+                if(m_manager) return m_manager;
+                m_manager = GameObject.FindObjectOfType<ActivityManager>();
+                if(m_manager) return m_manager;
+                GameObject go = new GameObject("$activity");
+                go.transform.SetSiblingIndex(0);
+                if(Application.isPlaying) GameObject.DontDestroyOnLoad(go);
+                ActivityManager am = m_manager = go.AddComponent<ActivityManager>();
+                #if UNITY_EDITOR
+                //If not playing, an editor script or tool might want looping callbacks
+                if(!Application.isPlaying) {                     
+                    am.name+="-editor";
+                    //Prevent state inconsistencies
+                    am.hideFlags = HideFlags.DontSave;                        
+                    //Register for destroy context in case of playmode change
+                    EditorApplication.playModeStateChanged += 
+                    delegate(PlayModeStateChange m) {                            
+                        //Destroy offline manager
+                        if(am.gameObject) GameObject.DestroyImmediate(am.gameObject);
+                    };                    
+                }
+                #endif
+                am.Initialize();
+                return am;
+            }
+        }
+        static private ActivityManager m_manager;
+
+        /// <summary>
+        /// List of running processes
+        /// </summary>
+        internal List<ActivityProcessBase> process;
+
+        /// <summary>
+        /// Internals
+        /// </summary>
+        private int m_next_thread_process;
+
+        /// <summary>
+        /// CTOR.
+        /// </summary>
+        internal void Initialize() {
+            process = new List<ActivityProcessBase>();
+            process.Clear();
+            { ActivityProcess   p = CreateProcess<ActivityProcess  >("a-update");    p.Initialize(ActivityContext.Update,      false); }
+            { ActivityProcess   p = CreateProcess<ActivityProcess  >("a-late");      p.Initialize(ActivityContext.LateUpdate,  false); }
+            { ActivityProcess   p = CreateProcess<ActivityProcess  >("a-fixed");     p.Initialize(ActivityContext.FixedUpdate, false); }
+            { ActivityProcess   p = CreateProcess<ActivityProcess  >("a-async");     p.Initialize(ActivityContext.Async,       true ); }
+            { ActivityProcess   p = CreateProcess<ActivityProcess  >("a-job");       p.Initialize(ActivityContext.Job,         false); }
+            { ActivityProcess   p = CreateProcess<ActivityProcess  >("a-job-async"); p.Initialize(ActivityContext.JobAsync,    false); }
+            for(int i = 0; i < Activity.maxThreadCount; i++) {
+                { ActivityProcess p = CreateProcess<ActivityProcess>($"a-thread-{i.ToString("00")}"); p.Initialize(ActivityContext.Thread,false); }
+            }
+            { APUpdateable      p = CreateProcess<APUpdateable     >("i-update");    p.Initialize(ActivityContext.Update,      false); }
+            { APLateUpdateable  p = CreateProcess<APLateUpdateable >("i-late");      p.Initialize(ActivityContext.LateUpdate,  false); }
+            { APFixedUpdateable p = CreateProcess<APFixedUpdateable>("i-fixed");     p.Initialize(ActivityContext.FixedUpdate, false); }
+            { APAsyncUpdateable p = CreateProcess<APAsyncUpdateable>("i-async");     p.Initialize(ActivityContext.Async,       true ); }
+            for(int i=0;i<Activity.maxThreadCount;i++) {                
+                { APThreadUpdateable p = CreateProcess<APThreadUpdateable >($"i-thread-{i.ToString("00")}"); p.Initialize(ActivityContext.Thread,      false); }
+            }
+        }
+
+        /// <summary>
+        /// Creates a new process GameObject and adds the needed component.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="p_name"></param>
+        /// <returns></returns>
+        private T CreateProcess<T>(string p_name) where T : ActivityProcessBase { 
+            GameObject g = new GameObject(p_name);
+            g.transform.parent = transform; 
+            T p = g.AddComponent<T>();
+            process.Add(p);
+            return p;
+        }
+
+        /// <summary>
+        /// Returns a process of the given context and process type.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="p_context"></param>
+        /// <returns></returns>
+        private T GetProcess<T>(ActivityContext p_context) where T : ActivityProcessBase {
+            T res = null;
+            if(m_list_p_thread==null) m_list_p_thread = new List<ActivityProcessBase>();
+            m_list_p_thread.Clear();                
+            for(int i=0;i<process.Count;i++) {
+                ActivityProcessBase it = process[i];
+                if(it.context != p_context) continue;
+                if(!(it is T)) continue;
+                if(p_context == ActivityContext.Thread) { m_list_p_thread.Add(it); continue; }
+                res = (T)it;
+                break;
+            }
+            //If 'thread' cycle thru available thread processes
+            if(p_context == ActivityContext.Thread) 
+            if(m_list_p_thread.Count>0) {
+                int idx = m_next_thread_process%m_list_p_thread.Count;
+                m_next_thread_process++;
+                res = (T)m_list_p_thread[idx];
+            }
+            return res;
+        }
+        private List<ActivityProcessBase> m_list_p_thread;
+        
+        internal void AddInterface(object n) { 
+            if(n==null) return;
+            if(n is IUpdateable      ) { APUpdateable       p = GetProcess<APUpdateable      >(ActivityContext.Update     ); p.Add((IUpdateable      )n);  }
+            if(n is ILateUpdateable  ) { APLateUpdateable   p = GetProcess<APLateUpdateable  >(ActivityContext.LateUpdate ); p.Add((ILateUpdateable  )n);  }
+            if(n is IFixedUpdateable ) { APFixedUpdateable  p = GetProcess<APFixedUpdateable >(ActivityContext.FixedUpdate); p.Add((IFixedUpdateable )n);  }
+            if(n is IAsyncUpdateable ) { APAsyncUpdateable  p = GetProcess<APAsyncUpdateable >(ActivityContext.Async      ); p.Add((IAsyncUpdateable )n);  }
+            if(n is IThreadUpdateable) { APThreadUpdateable p = GetProcess<APThreadUpdateable>(ActivityContext.Thread     ); p.Add((IThreadUpdateable)n);  }
+        }
+        internal void RemoveInterface(object n) { 
+            if(n==null) return;
+            if(n is IUpdateable      ) { APUpdateable       p = GetProcess<APUpdateable      >(ActivityContext.Update     ); p.Remove((IUpdateable      )n);  }
+            if(n is ILateUpdateable  ) { APLateUpdateable   p = GetProcess<APLateUpdateable  >(ActivityContext.LateUpdate ); p.Remove((ILateUpdateable  )n);  }
+            if(n is IFixedUpdateable ) { APFixedUpdateable  p = GetProcess<APFixedUpdateable >(ActivityContext.FixedUpdate); p.Remove((IFixedUpdateable )n);  }
+            if(n is IAsyncUpdateable ) { APAsyncUpdateable  p = GetProcess<APAsyncUpdateable >(ActivityContext.Async      ); p.Remove((IAsyncUpdateable )n);  }
+            if(n is IThreadUpdateable) { APThreadUpdateable p = GetProcess<APThreadUpdateable>(ActivityContext.Thread     ); p.Remove((IThreadUpdateable)n);  }
+        }
+        
+        internal void Add(Activity a) {
+            if(a==null) return;            
+            //Only accept correctly stopped tasks
+            if(a.state==ActivityState.Running) {  return; }
+            if(a.state==ActivityState.Queued)  {  return; }
+            ActivityProcess p = GetProcess<ActivityProcess>(a.context);
+            a.process = p;
+            a.state = ActivityState.Queued;
+            p.Add(a);
+            a.OnManagerAddInternal();
+        }
+
+        internal void Remove(Activity a) {            
+            //Skip invalid
+            if(a==null) return;                
+            if(a.process==null) return;
+            a.process.Remove(a);
+            a.OnManagerRemoveInternal();
+        }
+
+        internal void Kill() {
+            for(int i=0;i<process.Count;i++) process[i].Kill();
+        }
+
+        internal T Find<T>(string p_id,ActivityContext p_context) where T : Activity {
+            ActivityProcess p = GetProcess<ActivityProcess>(p_context);
+            if(p==null) return null;
+            T res =  p.Find<T>(p_id);
+            return res;
+        }
+
+        internal List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity {
+            ActivityProcess p = GetProcess<ActivityProcess>(p_context);
+            if(p==null) return new List<T>();
+            List<T> res =  p.FindAll<T>(p_id);
+            return res;
+        }
+
+
+            /*
             #region static
 
             /// <summary>
@@ -558,8 +729,8 @@ namespace UnityExt.Core {
                 //Skip invalid
                 if(a==null)               return;
                 //Only accept correctly stopped tasks
-                if(a.state==ActivityState.Running) { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already running.");*/ return; }
-                if(a.state==ActivityState.Queued)  { /*Debug.LogWarning($"ActivityManager> Activity [{p_activity.id}] already queued.");*/  return; }
+                if(a.state==ActivityState.Running) {  return; }
+                if(a.state==ActivityState.Queued)  {  return; }
                 a.state = ActivityState.Queued;
                 switch(a.context) {                    
                     case ActivityContext.Job:
@@ -1001,6 +1172,8 @@ namespace UnityExt.Core {
             }
 
             #endregion
+
+            //*/
 
         }
 
