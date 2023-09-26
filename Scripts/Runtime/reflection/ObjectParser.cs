@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.IO;
 
-namespace UnityExt.Core.IO {
+namespace UnityExt.Core {
 
     #region enum ObjectMemberType
     /*

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Component = UnityEngine.Component;
 
-namespace UnityExt.Core.Components {
+namespace UnityExt.Core {
 
     #region struct TransformVector
     /// <summary>

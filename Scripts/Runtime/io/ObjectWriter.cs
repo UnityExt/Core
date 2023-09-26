@@ -6,7 +6,7 @@ using System.Collections;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace UnityExt.Core.IO {
+namespace UnityExt.Core {
 
     #region enum TokenType
     /// <summary>

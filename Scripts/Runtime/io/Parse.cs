@@ -8,7 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Math = System.Math;
 
-namespace UnityExt.Core.IO {
+namespace UnityExt.Core {
 
     /// <summary>
     /// Class that wraps numerical parsing from and to the general C# types, aiming for less to no GC and speed.

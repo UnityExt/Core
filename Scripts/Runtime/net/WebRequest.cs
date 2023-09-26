@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO;
-using UnityExt.Core.IO;
 using UnityEngine;
 using UnityEngine.Networking;
 using NetMultipartFormDataContent = System.Net.Http.MultipartFormDataContent;
@@ -12,7 +11,7 @@ using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace UnityExt.Core.Net {
+namespace UnityExt.Core {
 
     #region enum WebRequestState
     /// <summary>
@@ -924,7 +923,7 @@ namespace UnityExt.Core.Net {
                                         //next success state
                                         success_state = 1;
                                         //Continue loop but in main thread
-                                        success_activity = Run(success_task_fn,DataProcessContext);
+                                        success_activity = Run(success_task_fn,ActivityContext.Update);
                                         success_activity .id = id+"$finalize-success";
                                     }
                                     return false;

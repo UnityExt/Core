@@ -6,7 +6,7 @@ using UnityEngine.Scripting;
 using System.Collections.Generic;
 using System.Text;
 
-namespace UnityExt.Core.UI {
+namespace UnityExt.Core{
 
     #region enum SystemProfileMetricFlag
 

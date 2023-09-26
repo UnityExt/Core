@@ -6,7 +6,7 @@ using System.IO;
 using System.Text;
 using Math = System.Math;
 
-namespace UnityExt.Core.IO { 
+namespace UnityExt.Core { 
 
     /// <summary>
     /// Class that abstract bitwise manipulation and storage.

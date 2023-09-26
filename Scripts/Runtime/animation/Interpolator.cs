@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using UnityExt.Core.Components;
 using UnityEngine;
 
-namespace UnityExt.Core.Animation {
+namespace UnityExt.Core {
 
     #region interface IInterpolator
 

@@ -9,7 +9,7 @@ using NetStringContent            = System.Net.Http.StringContent;
 using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
 
-namespace UnityExt.Core.Net {
+namespace UnityExt.Core {
     
     #region class UploadHandlerStream
     /// <summary>

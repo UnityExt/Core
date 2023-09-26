@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace UnityExt.Core.Animation {
+namespace UnityExt.Core {
 
     #region enum AnimationWrapMode
 

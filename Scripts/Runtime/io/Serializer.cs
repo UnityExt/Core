@@ -4,7 +4,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 
-namespace UnityExt.Core.IO {
+namespace UnityExt.Core {
 
     #region enum SerializerAttrib
     /// <summary>

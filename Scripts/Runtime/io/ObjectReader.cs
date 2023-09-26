@@ -6,7 +6,7 @@ using System.Collections;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace UnityExt.Core.IO {
+namespace UnityExt.Core {
 
     /// <summary>
     /// Class that implements the read/write of C# objects into streams.

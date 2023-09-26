@@ -7,7 +7,7 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
-namespace UnityExt.Core.Storage { 
+namespace UnityExt.Core { 
 
     /// <summary>
     /// Class that implements a GUID generation and tagging system for Component based elements.

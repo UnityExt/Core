@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System;
 
-namespace UnityExt.Core.IO {
+namespace UnityExt.Core {
 
     /// <summary>
     /// Class that extends the base serializer to handle objects read/write
