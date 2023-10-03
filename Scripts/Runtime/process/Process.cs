@@ -918,16 +918,14 @@ namespace UnityExt.Sys {
                 case ProcessContext.FixedUpdate: {                    
                     //Update allowed flag
                     bool can_update   = deferred ? lv.jh.IsCompleted : true;
-                    //Deferred needs JobHandle to be 'Complete'
-                    if (can_update) if (deferred) lv.jh.Complete();
-                    if(deferred) Debug.Log($"{Time.frameCount} : {lv.jh.IsCompleted}");
+                    //Deferred needs JobHandle to be 'Complete' after finishing
                     if(can_update) {
+                        if(deferred) lv.jh.Complete();
                         //Update interface and stop if requested
                         if(!lv.j.OnJobUpdate()) { Dispose(); return; }
                         //Trigger next job run
                         lv.UpdateJob(deferred);
-                    }                    
-                    if(deferred) Debug.Log($"{Time.frameCount} : {lv.jh.IsCompleted}");
+                    }                                        
                 }
                 break;
             }
