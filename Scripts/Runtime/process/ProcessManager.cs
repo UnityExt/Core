@@ -9,6 +9,8 @@ using System.Threading;
 using static UnityEngine.UI.CanvasScaler;
 using System;
 using System.Security.Cryptography;
+using System.Reflection;
+using Unity.Jobs;
 
 namespace UnityExt.Sys {
 
@@ -327,8 +329,6 @@ namespace UnityExt.Sys {
         /// CTOR.
         /// </summary>
         protected void OnEnable() {
-            //Debug.Log($"ON ENABLE play: {isPlaying} | compile: {isCompiling}");
-            
             #if UNITY_EDITOR
             //Refresh editor event handlers
             UnityEditor.EditorApplication.update -= UpdateEditor;
@@ -344,7 +344,7 @@ namespace UnityExt.Sys {
                 units[i].manager = this;
                 units[i].Boot();
             }
-            //Validate Runtime Processes
+            //Assertions            
             ValidateRuntimeProcess();
             ValidateEditorProcess();
 

@@ -1,5 +1,7 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Sys;
 
@@ -71,6 +73,47 @@ namespace UnityExt.Sys {
         /// Runs inside a thread
         /// </summary>
         void OnThreadUpdate();
+    }
+
+    /// <summary>
+    /// Base Interface for Process handling unity jobs
+    /// </summary>
+    public interface IJobProcess : IActivity {
+
+        /// <summary>
+        /// Callback called after job completion
+        /// </summary>
+        bool OnJobUpdate();
+
+        /// <summary>
+        /// Handler for cleanup
+        /// </summary>
+        void OnJobDispose();
+
+        /// <summary>
+        /// Fetch the iteration count to execute JobFor
+        /// </summary>
+        /// <param name=""></param>
+        int GetForCount();
+
+        /// <summary>
+        /// Fetch the iteration parameters
+        /// </summary>
+        /// <param name="p_count"></param>
+        /// <param name="p_batch"></param>
+        int GetBatchCount();                                                                                                                                                                        
+
+    }
+
+    /// <summary>
+    /// Base Interface for Process handling unity jobs
+    /// </summary>
+    public interface IJobProcess<T> : IJobProcess where T : struct {
+        /// <summary>
+        /// Handler for when the job is instantiated
+        /// </summary>
+        /// <param name="p_job"></param>
+        T OnJobCreate();
     }
 
 }

@@ -1112,8 +1112,7 @@ namespace UnityExt.Core {
             //Create job instance
             job = m_has_job ? new T() : default(T);
             //Init flags            
-            m_is_scheduled = false;
-            m_is_scheduled = false;
+            m_is_scheduled = false;            
             //If parallel length and step <=0 execute as regular job
             m_job_parallel_length = 0;
             m_job_parallel_step   = 0;

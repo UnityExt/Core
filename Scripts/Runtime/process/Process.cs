@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Runtime.CompilerServices;
+using Unity.Jobs;
 using UnityEngine;
 using UnityExt.Core;
 
@@ -133,15 +135,35 @@ namespace UnityExt.Sys {
         /// <summary>
         /// Contains IThreadUpdateable Interface
         /// </summary>
-        IThreadUpdateable   = (1 << 8),        
+        IThreadUpdateable   = (1 << 8),
+        /// <summary>
+        /// Contains IThreadUpdateable Interface
+        /// </summary>
+        IJobProcess         = (1 << 9),
         /// <summary>
         /// Flag that tell its a delegate
         /// </summary>
-        Delegate            = (1 << 9),
+        Delegate            = (1 << 10),
+        /// <summary>
+        /// Flag that tell its a job process
+        /// </summary>
+        Job                 = (1 << 11),
+        /// <summary>
+        /// Flag that tell its a job for process
+        /// </summary>
+        JobFor              = (2 << 11),
+        /// <summary>
+        /// Flag that tell its a job for process
+        /// </summary>
+        JobParalellFor      = (3 << 11),
+        /// <summary>
+        /// Bit Mask to check if jobs are available
+        /// </summary>
+        JobMask             = (3 << 11),
         /// <summary>
         /// Mask for all interfaces
         /// </summary>
-        Interfaces = IUpdateable | ILateUpdateable | IFixedUpdateable | IThreadUpdateable | IProcess | Component | Delegate,
+        Interfaces = IUpdateable | ILateUpdateable | IFixedUpdateable | IThreadUpdateable | IProcess | IJobProcess | Component | Delegate,
     }
     #endregion
 
@@ -159,7 +181,254 @@ namespace UnityExt.Sys {
     [System.Serializable]
     public class Process {
 
+        #region class UnityJobReflection
+        /// <summary>
+        /// Auxiliary Class to hold reflection data of unity job system
+        /// </summary>
+        internal class UnityJobReflection {
+
+            internal MethodInfo jobSchedule;
+            internal MethodInfo jobRun;
+            internal MethodInfo jobForSchedule;
+            internal MethodInfo jobForRun;
+            internal MethodInfo jobParallelForSchedule;
+            internal MethodInfo jobParallelForRun;
+
+            internal Type[] jobCtorArgs0;
+            internal object[] jobArgs0;
+            internal object[] jobArgs1;
+            internal object[] jobArgs2;
+            internal object[] jobArgs3;
+            internal object[] jobArgs4;
+
+            /// <summary>
+            /// CTOR.
+            /// </summary>
+            public UnityJobReflection() {
+                BindingFlags bf = BindingFlags.Public | BindingFlags.Static | BindingFlags.NonPublic;
+                Type jb_ext_t;
+                jb_ext_t = typeof(IJobExtensions); jobSchedule = jb_ext_t.GetMethod("Schedule",bf); jobRun = jb_ext_t.GetMethod("Run",bf);
+                jb_ext_t = typeof(IJobForExtensions); jobForSchedule = jb_ext_t.GetMethod("Schedule",bf); jobForRun = jb_ext_t.GetMethod("Run",bf);
+                jb_ext_t = typeof(IJobParallelForExtensions); jobParallelForSchedule = jb_ext_t.GetMethod("Schedule",bf); jobParallelForRun = jb_ext_t.GetMethod("Run",bf);                
+                jobCtorArgs0 = new Type[0];
+                jobArgs0 = new object[0]; //()
+                jobArgs1 = new object[1]; //(IJob)
+                jobArgs2 = new object[2]; //(IJob,JobHandle) (IJob,int)
+                jobArgs3 = new object[3]; //(IJob,int,JobHandle)
+                jobArgs4 = new object[4]; //(IJob,int,int,JobHandle)                                              
+            }
+
+        }
+        /// <summary>
+        /// Internals
+        /// </summary>
+        static private UnityJobReflection u_job_r;
+        #endregion
+
+        #region class ICasts
+        /// <summary>
+        /// Auxiliary class to hold interface casts
+        /// </summary>
+        [System.Serializable]
+        internal class Locals {
+
+            /// <summary>
+            /// Returns the process context by interfaces implemented
+            /// </summary>
+            /// <param name="a"></param>
+            /// <param name="e"></param>
+            /// <returns></returns>
+            static internal ProcessContext GetContexts(IActivity a, bool e) {
+                ProcessContext ctx = ProcessContext.None;
+                if(e) {
+                    if (a is IUpdateable      ) ctx |= ProcessContext.Editor;
+                    if (a is IThreadUpdateable) ctx |= ProcessContext.EditorThread;
+                }
+                else {
+                    if (a is IUpdateable       ) ctx |= ProcessContext.Update;
+                    if (a is ILateUpdateable   ) ctx |= ProcessContext.LateUpdate;
+                    if (a is IFixedUpdateable  ) ctx |= ProcessContext.FixedUpdate;
+                    if (a is IThreadUpdateable ) ctx |= ProcessContext.Thread;
+                    if (a is IJobProcess       ) ctx |= ProcessContext.Update;
+                }
+                return ctx;
+            }
+
+            /// <summary>
+            /// Casting shortcuts
+            /// </summary>
+            internal IUpdateable        u;
+            internal ILateUpdateable    lu;
+            internal IFixedUpdateable   fu;
+            internal IThreadUpdateable  tu;
+            internal IProcess           p;
+            internal IJobProcess        j;
+            internal JobHandle          jh;
+            internal bool               is_jf;
+            internal bool               is_jpf;
+            internal object             ji;
+            internal MethodInfo         jOnJobCreate;
+            internal MethodInfo         jSchedule;
+            internal MethodInfo         jRun;
+            internal UnityJobReflection jrfl { get { return u_job_r; } }
+            [SerializableField] internal Component c;
+
+            /// <summary>
+            /// Populate activity and interface data
+            /// </summary>
+            /// <param name="pp"></param>
+            /// <param name="a"></param>
+            internal bool Set(Process pp,IActivity a) {
+                    //Locals
+                IActivity it = a;
+                //Assertion
+                if (it == null) { Clear(); return false; }
+                //Flag bit mask
+                bool is_component = it is Component;            
+                //If component store its reference (serialization)
+                c = is_component ? it as Component : null;
+                //Ignore invalids (unity null check)
+                if (is_component) 
+                if (!c) { Clear(); return false; }
+                //Mark bit flag
+                if (is_component) pp.flags |= ProcessFlags.Component;
+                //Store reference
+                pp.activity = it;            
+                //Casting shortcuts
+                if (it is IUpdateable       )  { pp.flags |= ProcessFlags.IUpdateable;        u  = it as IUpdateable;       } else u  = null;
+                if (it is ILateUpdateable   )  { pp.flags |= ProcessFlags.ILateUpdateable;    lu = it as ILateUpdateable;   } else lu = null;
+                if (it is IFixedUpdateable  )  { pp.flags |= ProcessFlags.IFixedUpdateable;   fu = it as IFixedUpdateable;  } else fu = null;
+                if (it is IThreadUpdateable )  { pp.flags |= ProcessFlags.IThreadUpdateable;  tu = it as IThreadUpdateable; } else tu = null;
+                if (it is IProcess          )  { pp.flags |= ProcessFlags.IProcess;           p  = it as IProcess;          } else p  = null;
+                if (it is IJobProcess       )  { pp.flags |= ProcessFlags.IJobProcess;        j  = it as IJobProcess;       } else j  = null;
+                //Job System Reflection Crazyness
+                if (j != null) {
+                    //Fetch list of interfaces
+                    Type[] jil = j.GetType().GetInterfaces();                    
+                    //Reference to the Generics version of the interface
+                    Type   jgt = null;
+                    Type   jgt_job_t        = null;
+                    //Reset job type flags
+                    is_jf = is_jpf = false;
+                    for (int i = 0;i < jil.Length;i++) {
+                        Type jit = jil[i];
+                        //Must have <T>
+                        if (!jit.IsGenericType) continue;
+                        //Must be IProcess<T>
+                        if (!jit.Name.Contains("IJobProcess")) continue;
+                        //Save Type
+                        jgt = jit; 
+                        break;                        
+                    }
+                    //If no generic IProcess<T> found
+                    if (jgt == null) { j = null; return false; }
+                    //Fetch the <T> type
+                    jgt_job_t = jgt.GenericTypeArguments[0];
+                    //If failed
+                    if (jgt_job_t == null) { j = null; return false; }
+                    //IProcess<T>.OnJobCreated(job)
+                    jOnJobCreate = j.GetType().GetMethod("OnJobCreate");
+                    //Aux
+                    jrfl.jobArgs1[0] = ji;
+                    //Invoke OnJobCreated
+                    ji = jOnJobCreate.Invoke(j,jrfl.jobArgs0);
+                    //Fetch IJob vairations flags
+                    is_jf  = ji is IJobFor;
+                    is_jpf = ji is IJobParallelFor;                    
+                    if (is_jf ) jSchedule = jrfl.jobForSchedule        .MakeGenericMethod(jgt_job_t); else
+                    if (is_jpf) jSchedule = jrfl.jobParallelForSchedule.MakeGenericMethod(jgt_job_t); else
+                                jSchedule = jrfl.jobSchedule           .MakeGenericMethod(jgt_job_t);
+
+                    if (is_jf ) jRun = jrfl.jobForRun        .MakeGenericMethod(jgt_job_t); else
+                    if (is_jpf) jRun = jrfl.jobParallelForRun.MakeGenericMethod(jgt_job_t); else
+                                jRun = jrfl.jobRun           .MakeGenericMethod(jgt_job_t);
+
+                }
+                //All good
+                return true;
+            }
+
+            internal bool UpdateJob(bool p_deferred) {
+                //Iteration locals
+                int c = 0;
+                int b = 0;
+                if (is_jf || is_jpf) c = j.GetForCount  ();
+                if (is_jpf         ) c = j.GetBatchCount();
+                if (!p_deferred) {
+                    //Run(jobData,arrayLength)
+                    if (is_jf) {
+                        jrfl.jobArgs2[0] = ji; 
+                        jrfl.jobArgs2[1] = c ;
+                        jRun.Invoke(null,jrfl.jobArgs2);
+                    }
+                    //Run(jobData,arrayLength)
+                    else
+                    if (is_jpf){
+                        jrfl.jobArgs2[0] = ji;
+                        jrfl.jobArgs2[1] = c;
+                        jRun.Invoke(null,jrfl.jobArgs2);
+                    }
+                    //Run(jobData)
+                    else {
+                        jrfl.jobArgs1[0] = ji;
+                        jRun.Invoke(null,jrfl.jobArgs1);
+                    }
+                    return true;
+                }
+                
+                //Wait for completion
+                if (!jh.IsCompleted) return false;
+                //Schedule(jobData,arrayLength,JobHandle)
+                if (is_jf) {
+                    jrfl.jobArgs3[0] = ji;
+                    jrfl.jobArgs3[1] = c;
+                    jrfl.jobArgs3[2] = default(JobHandle);
+                    jh = (JobHandle)jSchedule.Invoke(null,jrfl.jobArgs3);
+                }
+                //Schedule(jobData,arrayLength,innerloopBatchCount,JobHandle)
+                else
+                if (is_jpf) {
+                    jrfl.jobArgs4[0] = ji;
+                    jrfl.jobArgs4[1] = c;
+                    jrfl.jobArgs4[2] = b;
+                    jrfl.jobArgs4[3] = default(JobHandle);
+                    jh = (JobHandle)jSchedule.Invoke(null,jrfl.jobArgs4);
+                }
+                //Schedule(jobData,JobHandle)
+                else {
+                    jrfl.jobArgs2[0] = ji;
+                    jrfl.jobArgs2[1] = default(JobHandle);
+                    jh = (JobHandle)jSchedule.Invoke(null,jrfl.jobArgs2);
+                }
+                return true;
+                
+            }
+
+            /// <summary>
+            /// Clear all references
+            /// </summary>
+            public void Clear() {                
+                u  = null; 
+                lu = null; 
+                fu = null;
+                tu = null;
+                p  = null;
+                j  = null;
+                jh     = default;
+                is_jf  = false;
+                is_jpf = false;
+            }
+        }
+        #endregion
+
         #region static
+
+        /// <summary>
+        /// CTOR.
+        /// </summary>
+        static Process() {
+            u_job_r = new UnityJobReflection();
+        }
 
         /// <summary>
         /// Returns a process instance
@@ -188,17 +457,7 @@ namespace UnityExt.Sys {
         /// </summary>
         /// <returns></returns>
         static public Process New(IActivity p_activity,ProcessFlags p_flags,bool p_editor=false) {
-            ProcessContext ctx = ProcessContext.None;
-            if(p_editor) {
-                if (p_activity is IUpdateable      ) ctx |= ProcessContext.Editor;
-                if (p_activity is IThreadUpdateable) ctx |= ProcessContext.EditorThread;
-            }
-            else {
-                if (p_activity is IUpdateable       ) ctx |= ProcessContext.Update;
-                if (p_activity is ILateUpdateable   ) ctx |= ProcessContext.LateUpdate;
-                if (p_activity is IFixedUpdateable  ) ctx |= ProcessContext.FixedUpdate;
-                if (p_activity is IThreadUpdateable ) ctx |= ProcessContext.Thread;
-            }
+            ProcessContext ctx = Locals.GetContexts(p_activity,p_editor);
             return New(ctx,p_flags,p_activity); 
         }
 
@@ -312,7 +571,7 @@ namespace UnityExt.Sys {
         /// <summary>
         /// Delta time since last execution
         /// </summary>
-        public float deltatime;
+        public float deltaTime;
 
         /// <summary>
         /// Flag that tells to use time scale.
@@ -341,17 +600,8 @@ namespace UnityExt.Sys {
         public ProcessFlags flags { get { return m_flags; } private set { m_flags = value; } }
         [SerializeField] private ProcessFlags m_flags;
 
-        /// <summary>
-        /// Flag that tells its the first tick.
-        /// </summary>
-        
-        //Casting helpers
-        [HideInInspector][SerializeField] private Component cst_c;
-        private IUpdateable       cst_u;
-        private ILateUpdateable   cst_lu;
-        private IFixedUpdateable  cst_fu;
-        private IThreadUpdateable cst_tu;
-        private IProcess          cst_p;
+        //Locals helper
+        private Locals lv;        
         [SerializeField] public float[] m_lt_lut;
         [SerializeField] public float[] m_t_lut;
         [SerializeField] public float[] m_dt_lut;
@@ -371,17 +621,13 @@ namespace UnityExt.Sys {
             state         = ProcessState.Idle;
             context       = ProcessContext.None;
             time          = 0f;
-            deltatime     = 0f;            
+            deltaTime     = 0f;            
             activity      = null;            
             //Clear Flags
             flags = ProcessFlags.None;
             //Clear casts
-            cst_c  = null;
-            cst_u  = null;
-            cst_lu = null;
-            cst_fu = null;
-            cst_tu = null;
-            cst_p  = null;
+            if (lv == null) lv = new Locals();
+            lv.Clear();
             //Remove all callbacks
             callback = null;
             ClearUnitData();
@@ -409,6 +655,19 @@ namespace UnityExt.Sys {
         }
 
         /// <summary>
+        /// Returns the job instance if Process is unity job based
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <returns></returns>
+        public T GetJob<T>() where T : struct { return lv.ji == null ? default(T) : ((T)lv.ji); }
+
+        /// <summary>
+        /// Sets the job struct
+        /// </summary>
+        /// <param name="p_job"></param>
+        public void SetJob(object p_job) { lv.ji = p_job; }
+
+        /// <summary>
         /// Checks if a given flag is enabled
         /// </summary>
         /// <param name="p_mask"></param>
@@ -426,6 +685,8 @@ namespace UnityExt.Sys {
             ProcessFlags m = p_mask;
             //Mask out interface related ones (handled differently)
             m = m & ~(ProcessFlags.Interfaces);
+            //Mask out job related ones (handled differently)
+            m = m & ~(ProcessFlags.JobMask);
             //Enable/Disable bit masks
             flags = p_value ? (f | m) : (f & (~m));            
         }
@@ -517,16 +778,13 @@ namespace UnityExt.Sys {
         /// </summary>
         internal bool InternalStart(ProcessContext p_context,ProcessFlags p_flags,IActivity p_activity,ProcessAction p_callback) {            
             //Context Assertion (only needed in editor
-            #if UNITY_EDITOR
-            switch(p_context) {
-                case ProcessContext.Update:
-                case ProcessContext.LateUpdate:
-                case ProcessContext.FixedUpdate:
-                case ProcessContext.Thread: 
-                    if(manager.isPlaying) break;
-                    Debug.LogWarning($"Process> Start 0x{pid.ToString("x")} / Can't Start Runtime Loops outside PlayMode!"); 
-                    Clear(); 
-                return false;                
+            #if UNITY_EDITOR            
+            if((p_context & ProcessContext.RuntimeMask)!=0) {
+                if(!manager.isPlaying) {
+                    Debug.LogWarning($"Process> Start 0x{pid.ToString("x")} / Can't Start Runtime Loops outside PlayMode!");
+                    Clear();
+                    return false;
+                }                
             }            
             #endif
             //Locals
@@ -534,17 +792,22 @@ namespace UnityExt.Sys {
             ProcessAction cb = p_callback;
             //Debug.Log($"Process> START - {state} - {a} @ [{a?.process?.pid}] [{pid}]");
             if(state != ProcessState.Idle) { Debug.LogWarning($"Process> Start 0x{pid.ToString("x")} / Invalid State to Start - {state}"); return false; }
+            //At least 'callback' or 'activity' must be valid
             bool has_handlers = (a != null) || (cb != null);
             if (!has_handlers) return false;
-            
-            if(a != null) {
+            //Clear Flags
+            flags = ProcessFlags.None;
+            //If activity populate            
+            if (a != null) {
                 if(a.process != null) { /*Debug.LogWarning($"Process> Start 0x{pid.ToString("x")} / Activity already in a process - {state}");*/ return false; }
-                //Set flags
-                SetActivity(a);
-                //Assertion when Unity Component
-                if (GetFlag(ProcessFlags.Component)) if (cst_c == null) { Debug.LogWarning($"Process> Start 0x{pid.ToString("x")} / Activity as Component is <null>"); return false; }
+                //Populate IActivity and other interfaces data
                 //Set the activity process
                 a.process = this;
+                //Populate interfaces data
+                lv.Set(this,a);
+                //Assertion when Unity Component
+                if (GetFlag(ProcessFlags.Component)) if (lv.c == null) { Debug.LogWarning($"Process> Start 0x{pid.ToString("x")} / Activity as Component is <null>"); return false; }
+                
             }            
             //If delegate assign reference
             if(cb != null) {
@@ -570,48 +833,25 @@ namespace UnityExt.Sys {
         }
 
         /// <summary>
-        /// Helper to set activity instance and all flags
-        /// </summary>
-        /// <param name="p_activity"></param>
-        internal void SetActivity(IActivity p_activity) {
-            //Clear Flags
-            flags = ProcessFlags.None;
-            //Clear casts
-            cst_u  = null;
-            cst_lu = null;
-            cst_fu = null;
-            cst_tu = null;
-            cst_p  = null;
-            //Locals
-            IActivity it = p_activity;
-            //Assertion
-            if (it == null) return;
-            //Flag bit mask
-            bool is_component = it is Component;            
-            //If component store its reference (serialization)
-            cst_c = is_component ? it as Component : null;
-            //Ignore invalids (unity null check)
-            if (is_component) if (!cst_c) return;
-            //Mark bit flag
-            if (is_component) flags |= ProcessFlags.Component;
-            //Store reference
-            activity = it;            
-            //Casting shortcuts
-            if (it is IUpdateable       )  { flags |= ProcessFlags.IUpdateable;        cst_u  = it as IUpdateable;       }
-            if (it is ILateUpdateable   )  { flags |= ProcessFlags.ILateUpdateable;    cst_lu = it as ILateUpdateable;   }
-            if (it is IFixedUpdateable  )  { flags |= ProcessFlags.IFixedUpdateable;   cst_fu = it as IFixedUpdateable;  }      
-            if (it is IThreadUpdateable )  { flags |= ProcessFlags.IThreadUpdateable;  cst_tu = it as IThreadUpdateable; }
-            if (it is IProcess          )  { flags |= ProcessFlags.IProcess;           cst_p  = it as IProcess;          }
-        }
-
-        /// <summary>
         /// Set the state and notify 
         /// </summary>
         /// <param name="p_state"></param>
         internal void SetState(ProcessContext p_context,ProcessState p_state) {
             //if(state == p_state) return;
             state = p_state;
-            if (activity != null) if (GetFlag(ProcessFlags.IProcess)) cst_p.OnProcessUpdate(p_context,state);
+            if (activity == null) return;
+            if (GetFlag(ProcessFlags.IProcess)) lv.p.OnProcessUpdate(p_context,state);
+            if (GetFlag(ProcessFlags.IJobProcess)) {
+                switch(state) {
+                    case ProcessState.Start: break;
+                    case ProcessState.Stop: {
+                        //If 'deferred' and job ongoing, force completion                        
+                        if (deferred)if (!lv.jh.IsCompleted) lv.jh.Complete();
+                        lv.j.OnJobDispose();
+                    }
+                    break;
+                }
+            }
         }
 
         /// <summary>
@@ -627,7 +867,7 @@ namespace UnityExt.Sys {
             m_t_lut[n]  += m_dt_lut[n];
             //Set the current time state 
             time      = m_t_lut[n];
-            deltatime = m_dt_lut[n];
+            deltaTime = m_dt_lut[n];
         }
 
         /// <summary>
@@ -641,9 +881,9 @@ namespace UnityExt.Sys {
             //If is component do checks
             if (GetFlag(ProcessFlags.Component)) { 
                 //If null dispose
-                if (!cst_c) { Dispose(); return; }
+                if (!lv.c) { Dispose(); return; }
                 //If by chance 'activity' is null (maybe recompile) - try recovering
-                if(activity==null) SetActivity(cst_c as IActivity);
+                if(activity==null) lv.Set(this,lv.c as IActivity);
             }            
             //Dispose in case of invalids
             if(GetFlag(ProcessFlags.Delegate)) {
@@ -654,17 +894,43 @@ namespace UnityExt.Sys {
             }
             //Run Process
             //Update basic activity            
-            if (GetFlag(ProcessFlags.IProcess)) cst_p.OnProcessUpdate(ctx,state);
+            if (GetFlag(ProcessFlags.IProcess)) lv.p.OnProcessUpdate(ctx,state);
             //Update loop specific ones            
             switch (ctx) {
                 case ProcessContext.Editor:
-                case ProcessContext.Update:         if(GetFlag(ProcessFlags.IUpdateable       )) cst_u .OnUpdate      (); break;                
-                case ProcessContext.LateUpdate:     if(GetFlag(ProcessFlags.ILateUpdateable   )) cst_lu.OnLateUpdate  (); break;
-                case ProcessContext.FixedUpdate:    if(GetFlag(ProcessFlags.IFixedUpdateable  )) cst_fu.OnFixedUpdate (); break;
+                case ProcessContext.Update:         if(GetFlag(ProcessFlags.IUpdateable       )) lv.u .OnUpdate      (); break;                
+                case ProcessContext.LateUpdate:     if(GetFlag(ProcessFlags.ILateUpdateable   )) lv.lu.OnLateUpdate  (); break;
+                case ProcessContext.FixedUpdate:    if(GetFlag(ProcessFlags.IFixedUpdateable  )) lv.fu.OnFixedUpdate (); break;
                 case ProcessContext.EditorThread:
-                case ProcessContext.Thread:         if(GetFlag(ProcessFlags.IThreadUpdateable )) cst_tu.OnThreadUpdate(); break;
+                case ProcessContext.Thread:         if(GetFlag(ProcessFlags.IThreadUpdateable )) lv.tu.OnThreadUpdate(); break;
             }
-            if (GetFlag(ProcessFlags.Delegate)) { bool res = callback(p_context,this); if(!res) Dispose(); }
+            //Update callback based
+            if (GetFlag(ProcessFlags.Delegate)) { 
+                //If return 'false' stop execution
+                bool res = callback(ctx,this); 
+                if (!res) { Dispose(); return; } 
+            }
+            //Update Job based ones
+            if (GetFlag(ProcessFlags.IJobProcess))
+            switch(ctx) {
+                case ProcessContext.Update:
+                case ProcessContext.LateUpdate:
+                case ProcessContext.FixedUpdate: {                    
+                    //Update allowed flag
+                    bool can_update   = deferred ? lv.jh.IsCompleted : true;
+                    //Deferred needs JobHandle to be 'Complete'
+                    if (can_update) if (deferred) lv.jh.Complete();
+                    if(deferred) Debug.Log($"{Time.frameCount} : {lv.jh.IsCompleted}");
+                    if(can_update) {
+                        //Update interface and stop if requested
+                        if(!lv.j.OnJobUpdate()) { Dispose(); return; }
+                        //Trigger next job run
+                        lv.UpdateJob(deferred);
+                    }                    
+                    if(deferred) Debug.Log($"{Time.frameCount} : {lv.jh.IsCompleted}");
+                }
+                break;
+            }
 
         }
 
