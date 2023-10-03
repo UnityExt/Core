@@ -5,10 +5,9 @@ using UnityExt.Sys;
 
 namespace UnityExt.Sys {
 
-
     #region interface IActivity
     /// <summary>
-    /// Interface that describes a simple activity that runs until completion
+    /// Interface that describes a simple activity that receives a process reference
     /// </summary>
     public interface IActivity {
 
@@ -17,30 +16,19 @@ namespace UnityExt.Sys {
         /// </summary>
         Process process { get; set; }
 
-        /// <summary>
-        /// Flag that tells if this activity is completed
-        /// </summary>
-        bool completed { get; set; }
-
-        /// <summary>
-        /// Handler for when this activity is executing
-        /// </summary>
-        void OnStep(ProcessContext p_context);
-
     }
     #endregion
 
-    #region interface IProcessActivity
+    #region interface IProcess
     /// <summary>
-    /// Interface that describes an Activity executing within a process scope receiving more detailed state information
+    /// Interface that describes an activity that receives execution steps from the process
     /// </summary>
-    public interface IProcessActivity : IActivity {
+    public interface IProcess : IActivity {
 
         /// <summary>
-        /// Handler for when the process changes execution state.
+        /// Handler for when the process execute some state call
         /// </summary>
-        /// <param name="p_state"></param>
-        void OnProcessState(ProcessState p_state);
+        void OnProcessUpdate(ProcessContext p_context,ProcessState p_state);
 
     }
     #endregion
@@ -73,16 +61,6 @@ namespace UnityExt.Sys {
         /// Runs inside Monobehaviour.FixedUpdate
         /// </summary>
         void OnFixedUpdate();
-    }
-
-    /// <summary>
-    /// Interfaces for objects that wants to perform update loops not bound by frames
-    /// </summary>
-    public interface IAsyncUpdateable : IActivity {
-        /// <summary>
-        /// Runs inside Monobehaviour.Update and only during the 'async-slice' duration per frame, so it can skip a few frames depending on the execution load.
-        /// </summary>
-        void OnAsyncUpdate();
     }
 
     /// <summary>

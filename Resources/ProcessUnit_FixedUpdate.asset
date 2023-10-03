@@ -13,10 +13,13 @@ MonoBehaviour:
   m_Name: FixedUpdate
   m_EditorClassIdentifier: 
   manager: {fileID: 11400000, guid: 40db46db038226147823b5b1f1a5dc28, type: 2}
+  memory:
+    unit: {fileID: 11400000}
+    blocks: 
+    invalid: -1
+    count: 0
+    tail: 0
+    defrag: 0
   id: 2
   context: 8
-  targets: ffffffffffffffffffffffffffffffffffffffff
-  start: 0
-  end: 0
-  count: 0
-  defrag: 0
+  editor: 0

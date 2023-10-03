@@ -12,15 +12,10 @@ namespace UnityExt.Sys {
         public Process process { get; set; }
 
         /// <summary>
-        /// Flag that specifies this Activity is completed
-        /// </summary>
-        public bool completed { get; set; }
-        
-        /// <summary>
         /// Handler for process related steps
         /// </summary>
         /// <param name="p_state"></param>
-        public void OnStep(ProcessContext p_context) {
+        public void OnStep(ProcessContext p_context, ProcessState p_state) {
             
 
         }
