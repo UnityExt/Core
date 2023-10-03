@@ -327,7 +327,7 @@ namespace UnityExt.Sys {
         /// CTOR.
         /// </summary>
         protected void OnEnable() {
-            Debug.Log($"ON ENABLE play: {isPlaying} | compile: {isCompiling}");
+            //Debug.Log($"ON ENABLE play: {isPlaying} | compile: {isCompiling}");
             
             #if UNITY_EDITOR
             //Refresh editor event handlers
@@ -384,7 +384,7 @@ namespace UnityExt.Sys {
         /// Disable Callback
         /// </summary>
         protected void OnDisable() {      
-            Debug.Log($"ON DISABLE play: {isPlaying} | compile: {isCompiling}");
+            //Debug.Log($"ON DISABLE play: {isPlaying} | compile: {isCompiling}");
             #if UNITY_EDITOR
             //Refresh editor update loop handler
             UnityEditor.EditorApplication.update -= UpdateEditor;
@@ -400,7 +400,7 @@ namespace UnityExt.Sys {
         /// Validate callback called upon compile or inspector changes
         /// </summary>
         protected void OnValidate() {
-            Debug.Log($"VALIDATE play: {isPlaying} | compile: {isCompiling}");
+            //Debug.Log($"VALIDATE play: {isPlaying} | compile: {isCompiling}");
             //If threads list available kill them all
             m_thread_kill = true;
             if (threads != null) 
