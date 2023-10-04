@@ -3,9 +3,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.Jobs;
+using UnityEditor.VersionControl;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityExt.Core;
+using Task = System.Threading.Tasks.Task;
 
 #pragma warning disable CS0414
 
@@ -143,23 +148,7 @@ namespace UnityExt.Sys {
         /// <summary>
         /// Flag that tell its a delegate
         /// </summary>
-        Delegate            = (1 << 10),
-        /// <summary>
-        /// Flag that tell its a job process
-        /// </summary>
-        Job                 = (1 << 11),
-        /// <summary>
-        /// Flag that tell its a job for process
-        /// </summary>
-        JobFor              = (2 << 11),
-        /// <summary>
-        /// Flag that tell its a job for process
-        /// </summary>
-        JobParalellFor      = (3 << 11),
-        /// <summary>
-        /// Bit Mask to check if jobs are available
-        /// </summary>
-        JobMask             = (3 << 11),
+        Delegate            = (1 << 10),        
         /// <summary>
         /// Mask for all interfaces
         /// </summary>
@@ -225,9 +214,9 @@ namespace UnityExt.Sys {
         static private UnityJobReflection u_job_r;
         #endregion
 
-        #region class ICasts
+        #region class Locals
         /// <summary>
-        /// Auxiliary class to hold interface casts
+        /// Auxiliary class to hold internal variables used across the process.
         /// </summary>
         [System.Serializable]
         internal class Locals {
@@ -257,6 +246,8 @@ namespace UnityExt.Sys {
             /// <summary>
             /// Casting shortcuts
             /// </summary>
+            [NonSerialized]
+            internal Process            proc;
             internal IUpdateable        u;
             internal ILateUpdateable    lu;
             internal IFixedUpdateable   fu;
@@ -271,6 +262,9 @@ namespace UnityExt.Sys {
             internal MethodInfo         jSchedule;
             internal MethodInfo         jRun;
             internal UnityJobReflection jrfl { get { return u_job_r; } }
+            internal Task               tsk;
+            internal float              tsk_yield;
+            internal CancellationTokenSource tsk_cancel;
             [SerializableField] internal Component c;
 
             /// <summary>
@@ -278,7 +272,7 @@ namespace UnityExt.Sys {
             /// </summary>
             /// <param name="pp"></param>
             /// <param name="a"></param>
-            internal bool Set(Process pp,IActivity a) {
+            internal bool Set(IActivity a) {
                     //Locals
                 IActivity it = a;
                 //Assertion
@@ -291,16 +285,16 @@ namespace UnityExt.Sys {
                 if (is_component) 
                 if (!c) { Clear(); return false; }
                 //Mark bit flag
-                if (is_component) pp.flags |= ProcessFlags.Component;
+                if (is_component) proc.flags |= ProcessFlags.Component;
                 //Store reference
-                pp.activity = it;            
+                proc.activity = it;            
                 //Casting shortcuts
-                if (it is IUpdateable       )  { pp.flags |= ProcessFlags.IUpdateable;        u  = it as IUpdateable;       } else u  = null;
-                if (it is ILateUpdateable   )  { pp.flags |= ProcessFlags.ILateUpdateable;    lu = it as ILateUpdateable;   } else lu = null;
-                if (it is IFixedUpdateable  )  { pp.flags |= ProcessFlags.IFixedUpdateable;   fu = it as IFixedUpdateable;  } else fu = null;
-                if (it is IThreadUpdateable )  { pp.flags |= ProcessFlags.IThreadUpdateable;  tu = it as IThreadUpdateable; } else tu = null;
-                if (it is IProcess          )  { pp.flags |= ProcessFlags.IProcess;           p  = it as IProcess;          } else p  = null;
-                if (it is IJobProcess       )  { pp.flags |= ProcessFlags.IJobProcess;        j  = it as IJobProcess;       } else j  = null;
+                if (it is IUpdateable       )  { proc.flags |= ProcessFlags.IUpdateable;        u  = it as IUpdateable;       } else u  = null;
+                if (it is ILateUpdateable   )  { proc.flags |= ProcessFlags.ILateUpdateable;    lu = it as ILateUpdateable;   } else lu = null;
+                if (it is IFixedUpdateable  )  { proc.flags |= ProcessFlags.IFixedUpdateable;   fu = it as IFixedUpdateable;  } else fu = null;
+                if (it is IThreadUpdateable )  { proc.flags |= ProcessFlags.IThreadUpdateable;  tu = it as IThreadUpdateable; } else tu = null;
+                if (it is IProcess          )  { proc.flags |= ProcessFlags.IProcess;           p  = it as IProcess;          } else p  = null;
+                if (it is IJobProcess       )  { proc.flags |= ProcessFlags.IJobProcess;        j  = it as IJobProcess;       } else j  = null;
                 //Job System Reflection Crazyness
                 if (j != null) {
                     //Fetch list of interfaces
@@ -346,6 +340,35 @@ namespace UnityExt.Sys {
                 }
                 //All good
                 return true;
+            }
+
+            internal void InitTask() {
+                if (tsk != null) return;
+                tsk_cancel = new CancellationTokenSource();
+                tsk = new Task(TaskComplete,tsk_cancel.Token);
+                tsk_yield = 0f;                
+            }
+
+            internal void TaskComplete() {
+                //Sleep is inside task thread, so safe to use
+                if (tsk_yield > 0f) System.Threading.Thread.Sleep((int)(tsk_yield*1000f));
+                //Clear up
+                tsk = null;
+                tsk_cancel = null;
+            }
+
+            internal void StartTask() {
+                if (tsk == null) return;
+                tsk.Start();
+            }
+
+            internal TaskAwaiter TaskAwaiter() { return tsk==null ? default : tsk.GetAwaiter(); }
+
+            internal void ClearTask() {
+                if (tsk == null) return;
+                tsk_cancel.Cancel();
+                tsk = null;
+                tsk_cancel = null;
             }
 
             internal bool UpdateJob(bool p_deferred) {
@@ -407,7 +430,7 @@ namespace UnityExt.Sys {
             /// <summary>
             /// Clear all references
             /// </summary>
-            public void Clear() {                
+            internal void Clear() {                
                 u  = null; 
                 lu = null; 
                 fu = null;
@@ -527,9 +550,7 @@ namespace UnityExt.Sys {
         /// </summary>
         public bool inUnit { 
             get {
-                int  k  = 0;
-                int  uc = 0;
-                int  f  = 1;
+                int k = 0, uc = 0,f = 1;
                 for (int i = 0;i < addresses.Length;i++) {
                     if (addresses[i] >= 0) k++;
                     if ((context & ((ProcessContext)f)) != 0) uc++;
@@ -545,9 +566,7 @@ namespace UnityExt.Sys {
         /// </summary>
         public bool outUnit {
             get {                             
-                for (int i = 0;i < addresses.Length;i++) {
-                    if (addresses[i] >= 0) return false;
-                }                
+                for (int i = 0;i < addresses.Length;i++) { if (addresses[i] >= 0) return false; }                
                 return true;
             }
         }
@@ -626,7 +645,7 @@ namespace UnityExt.Sys {
             //Clear Flags
             flags = ProcessFlags.None;
             //Clear casts
-            if (lv == null) lv = new Locals();
+            if (lv == null) { lv = new Locals(); lv.proc = this; }
             lv.Clear();
             //Remove all callbacks
             callback = null;
@@ -684,12 +703,45 @@ namespace UnityExt.Sys {
             ProcessFlags f = flags;
             ProcessFlags m = p_mask;
             //Mask out interface related ones (handled differently)
-            m = m & ~(ProcessFlags.Interfaces);
-            //Mask out job related ones (handled differently)
-            m = m & ~(ProcessFlags.JobMask);
+            m = m & ~(ProcessFlags.Interfaces);            
             //Enable/Disable bit masks
             flags = p_value ? (f | m) : (f & (~m));            
         }
+
+        #region Async/Await
+
+        /// <summary>
+        /// Yields this activity until completion and wait delay seconds before continuying.
+        /// </summary>
+        /// <param name="p_delay">Extra delay seconds after completion</param>
+        /// <returns>Task to be waited</returns>
+        public Task Yield(float p_delay = 0f) { lv.tsk_yield = p_delay; return lv.tsk; }
+
+        /// <summary>
+        /// Waits until 'timeout' to continue execution in 'await'
+        /// </summary>
+        /// <param name="p_timeout"></param>
+        /// <returns></returns>
+        public Task Wait(float p_timeout) {
+            Task tsk_ref = lv.tsk;
+            Task.Run(delegate () {
+                Thread.Sleep((int)(p_timeout * 1000f));
+                if(lv.tsk == null)    return;
+                if(lv.tsk != tsk_ref) return;
+                if(lv.tsk.Status == TaskStatus.Running     ) return;
+                if(lv.tsk.Status == TaskStatus.WaitingToRun) return;
+                lv.tsk.Start();
+            });
+            return lv.tsk;
+        }
+
+        /// <summary>
+        /// Reference to the awaiter.
+        /// </summary>
+        /// <returns>Current awaiter for 'await' operator.</returns>
+        public TaskAwaiter GetAwaiter() { return lv.TaskAwaiter(); }
+
+        #endregion
 
         /// <summary>
         /// Starts this process
@@ -804,7 +856,7 @@ namespace UnityExt.Sys {
                 //Set the activity process
                 a.process = this;
                 //Populate interfaces data
-                lv.Set(this,a);
+                lv.Set(a);
                 //Assertion when Unity Component
                 if (GetFlag(ProcessFlags.Component)) if (lv.c == null) { Debug.LogWarning($"Process> Start 0x{pid.ToString("x")} / Activity as Component is <null>"); return false; }
                 
@@ -820,6 +872,8 @@ namespace UnityExt.Sys {
             SetFlag(p_flags,true);
             //Set as Ready
             SetState(context,ProcessState.Ready);
+            //Start the Task system for 'await'
+            lv.InitTask();
             //Schedule process to run
             if (manager) manager.AddProcess(this,false);
             return true;
@@ -839,19 +893,21 @@ namespace UnityExt.Sys {
         internal void SetState(ProcessContext p_context,ProcessState p_state) {
             //if(state == p_state) return;
             state = p_state;
-            if (activity == null) return;
-            if (GetFlag(ProcessFlags.IProcess)) lv.p.OnProcessUpdate(p_context,state);
-            if (GetFlag(ProcessFlags.IJobProcess)) {
-                switch(state) {
-                    case ProcessState.Start: break;
-                    case ProcessState.Stop: {
+            bool has_handlers = (activity!=null) || (callback !=null);
+            if (!has_handlers) return;            
+            if (GetFlag(ProcessFlags.IProcess)) lv.p.OnProcessUpdate(p_context,state);            
+            switch(state) {                
+                case ProcessState.Stop: {
+                    //Execute task that will run in 1 tick or yield_ms and will unlock the 'await'
+                    lv.StartTask();
+                    if (GetFlag(ProcessFlags.IJobProcess)) {
                         //If 'deferred' and job ongoing, force completion                        
-                        if (deferred)if (!lv.jh.IsCompleted) lv.jh.Complete();
+                        if (deferred) lv.jh.Complete();
                         lv.j.OnJobDispose();
-                    }
-                    break;
+                    }                        
                 }
-            }
+                break;
+            }            
         }
 
         /// <summary>
@@ -882,8 +938,8 @@ namespace UnityExt.Sys {
             if (GetFlag(ProcessFlags.Component)) { 
                 //If null dispose
                 if (!lv.c) { Dispose(); return; }
-                //If by chance 'activity' is null (maybe recompile) - try recovering
-                if(activity==null) lv.Set(this,lv.c as IActivity);
+                //If by chance 'activity' is null (maybe recompilation) - try recovering
+                if(activity==null) lv.Set(lv.c as IActivity);
             }            
             //Dispose in case of invalids
             if(GetFlag(ProcessFlags.Delegate)) {
@@ -908,7 +964,10 @@ namespace UnityExt.Sys {
             if (GetFlag(ProcessFlags.Delegate)) { 
                 //If return 'false' stop execution
                 bool res = callback(ctx,this); 
-                if (!res) { Dispose(); return; } 
+                if (!res) { 
+                    Dispose(); 
+                    return; 
+                } 
             }
             //Update Job based ones
             if (GetFlag(ProcessFlags.IJobProcess))
