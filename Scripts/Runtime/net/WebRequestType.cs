@@ -580,22 +580,22 @@ namespace UnityExt.Core {
         /// Flush the form information into the stream
         /// </summary>
         /// <returns></returns>
-        internal Activity FlushFormAsync() {
+        internal Process FlushFormAsync() {
             //If no data skip a frame and continue            
-            if(stream==null) return Timer.Delay(1f/60f);
-            if(form==null)   return Timer.Delay(1f/60f);
+            if(stream==null) return Process.Delay(1f/60f);
+            if(form==null)   return Process.Delay(1f/60f);
             Task tsk = null;
-            Activity form_flush = 
-            Activity.Run(delegate(Activity a) {
+            Process form_flush = 
+            Process.Start(delegate(ProcessContext ctx, Process p) {
                 if(tsk == null) { tsk = form.CopyToAsync(stream); return true; }
                 bool is_completed = tsk.IsCompleted || tsk.IsFaulted || tsk.IsCanceled;
                 if(!is_completed) return true;
-                a.id = "form-success";
-                if(tsk.IsCanceled) a.id = "form-cancel";
-                if(tsk.IsFaulted)  a.id = "form-error";
+                p.name = "form-success";
+                if(tsk.IsCanceled) p.name = "form-cancel";
+                if(tsk.IsFaulted)  p.name = "form-error";
                 return false;
             });
-            form_flush.id = "web-body-form-flush";
+            form_flush.name = "web-body-form-flush";
             return form_flush;
         }
 

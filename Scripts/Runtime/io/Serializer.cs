@@ -119,7 +119,7 @@ namespace UnityExt.Core {
     /// Base Class for all serialization operations using UnityEx features.
     /// Serializers use the 'Activity' system to either run sync or async (using threads).
     /// </summary>
-    public abstract class Serializer : Activity {
+    public abstract class Serializer : TaskActivity {
 
         #region static 
 
@@ -127,22 +127,22 @@ namespace UnityExt.Core {
         /// <summary>
         /// Helper to perform serialization/deserialization on streams.
         /// </summary>        
-        static protected Activity InternalTask(bool p_async,SerializerMode p_mode,Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {
+        static protected Process InternalTask(bool p_async,SerializerMode p_mode,Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {
             Stream src = p_from;
             Stream dst = p_to;
-            if(src == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
-            if(dst == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            if(src == null) { return p_async ? Process.Start(delegate(ProcessContext ctx, Process p) { return false; }) : null; }
+            if(dst == null) { return p_async ? Process.Start(delegate (ProcessContext ctx,Process p) { return false; }) : null; }
             bool is_srl = p_mode == SerializerMode.Serialize;
             Stream ss = is_srl ? dst : src;
             ss = GetStream(ss,p_password,p_mode,p_attribs);
-            if(ss  == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            if(ss  == null) { return p_async ? Process.Start(delegate (ProcessContext ctx,Process p) { return false; }) : null; }
             Stream cp_src = is_srl ? src : ss;
             Stream cp_dst = is_srl ? ss  : dst;
             if(p_async) {
                 System.Threading.Tasks.Task copy_tsk = cp_src.CopyToAsync(cp_dst);
-                Activity task =
-                Activity.Run(
-                delegate(Activity a) {
+                Process task =
+                Process.Start(
+                delegate(ProcessContext ctx, Process p) {
                     if(copy_tsk==null)                            { if(p_callback!=null) p_callback(); return false; }
                     if(copy_tsk.IsFaulted || copy_tsk.IsCanceled) { if(p_callback!=null) p_callback(); return false; }
                     if(!copy_tsk.IsCompleted) return true;
@@ -152,7 +152,7 @@ namespace UnityExt.Core {
                     if(p_callback!=null) p_callback();
                     return false;
                 });
-                task.id = "serializer-task";
+                task.name = "serializer-task";
                 return task;
             }
             else {
@@ -166,11 +166,11 @@ namespace UnityExt.Core {
         /// <summary>
         /// Helper to perform hashes calculations on streams.
         /// </summary>        
-        static protected Activity InternalHash(bool p_async,Type p_hash_type,Stream p_from,Stream p_to,bool p_base64,Action p_callback = null,bool p_close=true) {
+        static protected Process InternalHash(bool p_async,Type p_hash_type,Stream p_from,Stream p_to,bool p_base64,Action p_callback = null,bool p_close=true) {
             Stream src = p_from;
             Stream dst = p_to;
-            if(src == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
-            if(dst == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            if(src == null) { return p_async ? Process.Start(delegate (ProcessContext ctx,Process p) { return false; }) : null; }
+            if(dst == null) { return p_async ? Process.Start(delegate (ProcessContext ctx,Process p) { return false; }) : null; }
 
             HashAlgorithm h = null;
             if(p_hash_type == typeof(KeyedHashAlgorithm)) h = KeyedHashAlgorithm.Create();
@@ -181,14 +181,14 @@ namespace UnityExt.Core {
             if(p_hash_type == typeof(SHA384            )) h = SHA384.Create();
             if(p_hash_type == typeof(SHA512            )) h = SHA512.Create();
 
-            if(h == null) { return p_async ? Activity.Run(delegate(Activity a) { return false; }) : null; }
+            if(h == null) { return p_async ? Process.Start(delegate (ProcessContext ctx,Process p) { return false; }) : null; }
 
             if(p_base64) dst = PipeBase64Conversion(dst, SerializerMode.Serialize, SerializerAttrib.Base64);
 
             if(p_async) {                
-                Activity task =
-                Activity.Run(
-                delegate(Activity a1) {
+                Process task =
+                Process.Start(
+                delegate(ProcessContext ctx1, Process p1) {
                     //Compute and write
                     byte[] res = h.ComputeHash(src);
                     dst.Write(res,0,res.Length);
@@ -197,15 +197,14 @@ namespace UnityExt.Core {
                     if(p_close) dst.Close();
                     //Run in main thread
                     task = 
-                    Activity.Run(delegate(Activity a2) { 
+                    Process.Start(delegate(ProcessContext ctx2,Process p2) { 
                         if(p_callback!=null) p_callback();
                         return false;
-                    },ActivityContext.Update);
-                    task.id = "serializer-hash-complete";
-
+                    });
+                    task.name = "serializer-hash-complete";
                     return false;
-                }, ActivityContext.Thread);
-                task.id = "serializer-hash-create";
+                },true);
+                task.name = "serializer-hash-create";
                 return task;
             }
             else {
@@ -245,10 +244,10 @@ namespace UnityExt.Core {
         /// <param name="p_attribs">Serialization attributes</param>
         /// <param name="p_callback">Callback called upon finishing</param>
         /// <returns>Running Activity performing the serialization (awaitable)</returns>
-        static public Activity SerializeAsync(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { return InternalTask(true, SerializerMode.Serialize,p_from,p_to,p_password,p_attribs,p_callback); }
-        static public Activity SerializeAsync(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { return InternalTask(true, SerializerMode.Serialize,p_from,p_to,null      ,p_attribs,p_callback); }
-        static public Activity SerializeAsync(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Serialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
-        static public Activity SerializeAsync(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Serialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public Process SerializeAsync(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { return InternalTask(true, SerializerMode.Serialize,p_from,p_to,p_password,p_attribs,p_callback); }
+        static public Process SerializeAsync(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { return InternalTask(true, SerializerMode.Serialize,p_from,p_to,null      ,p_attribs,p_callback); }
+        static public Process SerializeAsync(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Serialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public Process SerializeAsync(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Serialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
         #endregion
 
         #region Deserialize
@@ -275,10 +274,10 @@ namespace UnityExt.Core {
         /// <param name="p_attribs">Serialization attributes</param>
         /// <param name="p_callback">Callback called upon finishing</param>
         /// <returns>Running Activity performing the serialization (awaitable)</returns>
-        static public Activity DeserializeAsync(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {  return InternalTask(true, SerializerMode.Deserialize,p_from,p_to,p_password,p_attribs,p_callback); }
-        static public Activity DeserializeAsync(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {  return InternalTask(true, SerializerMode.Deserialize,p_from,p_to,null      ,p_attribs,p_callback); }
-        static public Activity DeserializeAsync(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
-        static public Activity DeserializeAsync(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public Process DeserializeAsync(Stream p_from,Stream p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {  return InternalTask(true, SerializerMode.Deserialize,p_from,p_to,p_password,p_attribs,p_callback); }
+        static public Process DeserializeAsync(Stream p_from,Stream p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) {  return InternalTask(true, SerializerMode.Deserialize,p_from,p_to,null      ,p_attribs,p_callback); }
+        static public Process DeserializeAsync(string p_from,string p_to,string p_password,SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,p_password,p_attribs | SerializerAttrib.CloseStream,null); }
+        static public Process DeserializeAsync(string p_from,string p_to,                  SerializerAttrib p_attribs = SerializerAttrib.None,Action p_callback=null) { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); return InternalTask(true, SerializerMode.Deserialize,src,dst,null      ,p_attribs | SerializerAttrib.CloseStream,null); }
         #endregion
 
         #region Hash        
@@ -291,8 +290,8 @@ namespace UnityExt.Core {
         /// <param name="p_base64">Flag that tells to convert the hashing result to base64.</param>
         static public void Hash<T>(Stream p_from,Stream p_to,bool p_base64=false) where T : HashAlgorithm { InternalHash(false,typeof(T),p_from,p_to,p_base64,null); }        
         static public void Hash<T>(string p_from,string p_to,bool p_base64=false) where T : HashAlgorithm { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); InternalHash(false,typeof(T),src,dst,p_base64,null); src.Close(); }
-        static public Activity HashAsync<T>(Stream p_from,Stream p_to,bool p_base64=false,Action p_callback=null) where T : HashAlgorithm { return InternalHash(false,typeof(T),p_from,p_to,p_base64,p_callback); }        
-        static public Activity HashAsync<T>(string p_from,string p_to,bool p_base64=false,Action p_callback=null) where T : HashAlgorithm { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); Activity a = InternalHash(false,typeof(T),src,dst,p_base64,p_callback); src.Close(); return a; }
+        static public Process HashAsync<T>(Stream p_from,Stream p_to,bool p_base64=false,Action p_callback=null) where T : HashAlgorithm { return InternalHash(false,typeof(T),p_from,p_to,p_base64,p_callback); }        
+        static public Process HashAsync<T>(string p_from,string p_to,bool p_base64=false,Action p_callback=null) where T : HashAlgorithm { FileStream src = File.OpenRead(p_from), dst = File.Create(p_to); Process p = InternalHash(false,typeof(T),src,dst,p_base64,p_callback); src.Close(); return p; }
         static public string Hash<T>(string p_input) where T : HashAlgorithm { 
             StreamWriter sw = new StreamWriter(new MemoryStream());
             sw.Write(p_input);
@@ -453,10 +452,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Event called upon operation completion
         /// </summary>
-        new public Action<Serializer> OnCompleteEvent {
-            get { return (Action<Serializer>)m_on_complete_event; }
-            set { m_on_complete_event = value;               }
-        }
+        public Action<Serializer> OnCompleteEvent;
 
         /// <summary>
         /// Returns the result of async operations.
@@ -469,13 +465,13 @@ namespace UnityExt.Core {
         /// Internals.
         /// </summary>
         internal  SerializerDesc descriptor;
-        protected Activity       m_task_thread;
+        protected Process        m_task_thread;
         protected object         m_output;
         
         /// <summary>
         /// CTOR.
         /// </summary>
-        public Serializer() {
+        public Serializer() : base("") {
             id = $"{GetType().Name.ToLower()}-{m_id}";
         }
 
@@ -633,29 +629,31 @@ namespace UnityExt.Core {
         /// Handler for the execution loop
         /// </summary>
         /// <returns></returns>
-        protected override bool OnExecute() {
+        protected override void OnStateUpdate(TaskState p_state) {
+            if (p_state != TaskState.Run) return;
             SerializerDesc dsc = descriptor;
             //If no descriptor active stop
-            if(dsc==null) return false;
+            if(dsc==null) { Stop(); return; }
             //If there is a task check its completion or continue
             if(m_task_thread != null) {
                 //Check thread completion
-                bool is_completed = m_task_thread.completed;
-                if(!is_completed) return true;
+                bool is_completed = m_task_thread.state == ProcessState.Stop;
+                if(!is_completed) return;
                 //Fetch result
                 m_output = dsc.output;
                 //Callbacks
                 descriptor.Invoke();                    
                 //Invalidate descriptor
                 descriptor = null;
-                return false;
+                Stop();
+                return;
             }
             //Flag to tell its the first loop
             bool first_loop = true;
             //Parsing Thread
             m_task_thread =
-            Activity.Run(
-            delegate(Activity a) { 
+            Process.Start(
+            delegate(ProcessContext ctx,Process p) { 
                 bool is_complete = false;
                 if(dsc.safe) {
                     try {
@@ -675,10 +673,10 @@ namespace UnityExt.Core {
                 if(!is_complete) return true;                        
                 //Stop the thread and let the activity collect the result
                 return false;
-            },ActivityContext.Thread);
-            m_task_thread.id = id+"$task";            
+            },true);
+            m_task_thread.name = id+"$task";            
             //Cycle again and poll the running thread
-            return true;
+            return;
         }
 
         #region Streams

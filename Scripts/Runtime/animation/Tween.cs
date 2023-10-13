@@ -14,7 +14,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Animations run once and stops.
         /// </summary>
-        Clamp=0,
+        Clamp = 0,
         /// <summary>
         /// Animation runs in loop and wraps back to first value.
         /// </summary>
@@ -28,6 +28,80 @@ namespace UnityExt.Core {
     #endregion
 
     #region class Tween
+
+    #region struct TweenStart
+    /// <summary>
+    /// Struct that initializes a Timer Start
+    /// </summary>
+    public struct TweenStart {
+
+        #region static
+        /// <summary>
+        /// Returns a populated start struct using the input instance
+        /// </summary>
+        /// <param name="t"></param>
+        /// <returns></returns>
+        static internal TweenStart From(Tween t) {
+            return new TweenStart {
+                tween    = t.tween,
+                delay    = t.delay,
+                duration = t.duration,
+                count    = t.count,
+                speed    = t.speed,
+                wrap     = t.wrap
+            };
+        }
+        #endregion
+
+        /// <summary>
+        /// Reference to the interpolator
+        /// </summary>
+        public IInterpolator tween;
+
+        /// <summary>
+        /// Delay before starting
+        /// </summary>
+        public float delay { get { return m_delay ?? 0f; } set { m_delay = value; } }
+        float? m_delay;
+
+        /// <summary>
+        /// Duration of the timer
+        /// </summary>
+        public float duration { get { return m_duration ?? Tween.DefaultDuration; } set { m_duration = value; } }
+        float? m_duration;
+
+        /// <summary>
+        /// Number of steps
+        /// </summary>
+        public int count { get { return m_count ?? 1; } set { m_count = value; } }
+        int? m_count;
+
+        /// <summary>
+        /// Speed of time increments
+        /// </summary>
+        public float speed { get { return m_speed ?? 1f; } set { m_speed = value; } }
+        float? m_speed;
+
+        /// <summary>
+        /// Speed of time increments
+        /// </summary>
+        public AnimationWrapMode wrap { get { return m_wrap ?? AnimationWrapMode.Clamp; } set { m_wrap = value; } }
+        AnimationWrapMode? m_wrap;
+
+        /// <summary>
+        /// Helper to populate a target instance
+        /// </summary>        
+        internal void To(Tween t) {
+            if(m_delay    != null) { t.delay    = delay;    }
+            if(m_duration != null) { t.duration = duration; }
+            if(m_count    != null) { t.count    = count;    }
+            if(m_speed    != null) { t.speed    = speed;    }
+            if(m_wrap     != null) { t.wrap     = wrap;     }
+        }
+
+    }
+    #endregion
+
     /// <summary>
     /// Tweens are timer extensions that upon receiving a 'target' object and its 'property' interpolates it during the timer execution.
     /// It will blend the 'from' 'to' values using an EasingFunction or AnimationCurve that maps the [0,1] progress to a new [0,1] actually applying the interpolation.
@@ -35,6 +109,13 @@ namespace UnityExt.Core {
     public class Tween : Timer {
 
         #region Easings
+
+        /// <summary>
+        /// Easing Equation y = x, basic linear interpolation
+        /// </summary>
+        /// <param name="p_r"></param>
+        /// <returns></returns>
+        static public float Linear(float p_r) { return p_r; }
 
         #region Quad
         /// <summary>
@@ -207,14 +288,14 @@ namespace UnityExt.Core {
         #region static
 
         /// <summary>
-        /// Default constant to add tweens.
-        /// </summary>
-        const ActivityContext DefaultContext = ActivityContext.Update; 
-
-        /// <summary>
         /// Default tween duration if none is specified.
         /// </summary>
         static public float DefaultDuration = 0.2f;
+
+        /// <summary>
+        /// Default Easing Method
+        /// </summary>
+        static public Func<float,float> DefaultEasing = Quad.Out;
 
         /// <summary>
         /// Searches for a single tween by id in one or all contexts.
@@ -222,10 +303,10 @@ namespace UnityExt.Core {
         /// <param name="p_id">Tween id to search.</param>        
         /// <param name="p_context">Context to search.</param>
         /// <returns>Tween found or null</returns>        
-        static public Tween Find(string p_id,ActivityContext p_context = DefaultContext) { return (Tween)Activity.Find<Tween>(p_id,p_context); }
+        //static public Tween Find(string p_id,ActivityContext p_context = DefaultContext) { return (Tween)Activity.Find<Tween>(p_id,p_context); }
 
         #region Find
-
+        /*
         /// <summary>
         /// Searches all tweens matching the search criteria.
         /// </summary>
@@ -286,11 +367,11 @@ namespace UnityExt.Core {
         /// <param name="p_property">Property being animated.</param>
         /// <returns>List of tweens or empty list.</returns>
         static public List<Tween> FindAll(object p_target,ActivityContext p_context = DefaultContext) { return FindAll("",p_target,"",p_context); }
-
+        //*/
         #endregion
 
         #region Clear
-
+        /*
         /// <summary>
         /// Stops all tweens matching the criteria
         /// </summary>
@@ -348,11 +429,11 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_list"></param>
         static internal void ClearAll(List<Tween> p_list) { for(int i=0;i<p_list.Count;i++) p_list[i].Stop(); }
-
+        //*/
         #endregion
         
         #region Run/Loop
-
+        /*
         /// <summary>
         /// Helper
         /// </summary>        
@@ -364,12 +445,13 @@ namespace UnityExt.Core {
             n.OnStepEvent     = p_on_step;            
             return n;
         }
-
+        //*/
         #region Run
 
         #region Complete Callback
 
         #region Easing Method
+        /*
         /// <summary>
         /// Creates and execute a tween animation, applying the property change in the target object. 
         /// A 'from' value can be specified and will be snaped upon tween start, otherwise the tween will sample the current property value.
@@ -405,9 +487,11 @@ namespace UnityExt.Core {
         static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,              Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Action<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,      1,p_easing,p_wrap,null,p_callback,null); n.Start(p_delay); return n; }
         static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,                               Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Action<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,           0f,      1,p_easing,p_wrap,null,p_callback,null); n.Start(       ); return n; }
         static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,                                                Func<float,float> p_easing=null,AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Action<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,DefaultDuration,      0f,      1,p_easing,p_wrap,null,p_callback,null); n.Start(       ); return n; }
+        //*/
         #endregion
 
         #region Easing Curve
+        /*
         /// <summary>
         /// Creates and execute a tween animation, applying the property change in the target object. 
         /// A 'from' value can be specified and will be snaped upon tween start, otherwise the tween will sample the current property value.
@@ -443,6 +527,7 @@ namespace UnityExt.Core {
         static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,float p_delay=0f,              AnimationCurve p_easing=null,   AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Action<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,      p_delay,      1,p_easing,p_wrap,null,p_callback,null); n.Start(p_delay); return n; }
         static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,float p_duration,                               AnimationCurve p_easing=null,   AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Action<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,p_duration,           0f,      1,p_easing,p_wrap,null,p_callback,null); n.Start(       ); return n; }
         static public Tween<T> Run<T>(            object p_target,string p_property,         T p_to,                                                AnimationCurve p_easing=null,   AnimationWrapMode p_wrap = AnimationWrapMode.Clamp,System.Action<Tween> p_callback=null) { Tween<T> n = Create<T>("",  p_target,p_property,p_to,  p_to,false,DefaultDuration,      0f,      1,p_easing,p_wrap,null,p_callback,null); n.Start(       ); return n; }
+        //*/
         #endregion
 
         #endregion
@@ -473,156 +558,136 @@ namespace UnityExt.Core {
                 }
             }
         }
-        private AnimationWrapMode m_wrap;
-
-        /// <summary>
-        /// Get/Set the tween animation speed.
-        /// </summary>
-        public float speed { get { return m_speed_internal; } set { m_speed_internal = Mathf.Max(value,0f); } }
+        private AnimationWrapMode m_wrap = AnimationWrapMode.Clamp;
 
         #region CTOR
 
         /// <summary>
         /// Creates a new Tween to animate 'property' of a 'target' object.
         /// </summary>
-        /// <param name="p_id">Tween Id for querying and/or cancelling.</param>
-        /// <param name="p_target">Object to animate.</param>
-        /// <param name="p_property">Property to apply animation.</param>
-        /// <param name="p_from">Initial value, if not specified the interpolator will sample the property in the first iteration.</param>
-        /// <param name="p_to">End value applied in the property.</param>
-        /// <param name="p_duration">Duration of the Tween. Defaults to 'DefaultDuration'</param>
-        /// <param name="p_count">Number of repetitions, defaults to 1</param>
-        /// <param name="p_easing">Easing Function/Curve. Its possible to provide either a Func<float,float> or AnimationCurve to interpolate the property.</param>
-        public Tween(string p_id,float p_duration,AnimationWrapMode p_wrap) : base(p_id,p_duration,1)       { CreateTween(p_wrap         ); }        
-        public Tween(string p_id,                 AnimationWrapMode p_wrap) : base(p_id,DefaultDuration,1)  { CreateTween(p_wrap         ); }        
-        public Tween(string p_id,float p_duration                         ) : base(p_id,p_duration,1)       { CreateTween(AnimationWrapMode.Clamp); }        
-        public Tween(string p_id                                          ) : base(p_id,DefaultDuration,1)  { CreateTween(AnimationWrapMode.Clamp); }
-        public Tween(            float p_duration,AnimationWrapMode p_wrap) : base("",p_duration,1)         { CreateTween(p_wrap         ); }        
-        public Tween(                             AnimationWrapMode p_wrap) : base("",DefaultDuration,1)    { CreateTween(p_wrap         ); }        
-        public Tween(            float p_duration                         ) : base("",p_duration,1)         { CreateTween(AnimationWrapMode.Clamp); }        
-        public Tween(                                                     ) : base("",DefaultDuration,1)    { CreateTween(AnimationWrapMode.Clamp); }                                        
-        
+        /// <param name="p_id">Tween Id for querying and/or cancelling.</param>        
+        public Tween(string p_id="") : base(p_id) { }
+
+        #endregion
+
+        #region Operation
+
         /// <summary>
-        /// Helper
-        /// </summary>        
-        internal Tween(string p_id,float p_duration,int p_count) : base(p_id,p_duration,p_count) { }
-        
+        /// Sets this tween parameters
+        /// </summary>
+        /// <param name="p_args"></param>
+        public void Set(TweenStart p_args) { p_args.To(this); }
+
         /// <summary>
-        /// Creates the tween internal structure.
-        /// </summary>        
-        internal void CreateTween(AnimationWrapMode p_wrap) {
-            //TODO: Tweens should use the async context to save up resources. (async timer use a thread timer thus fail on Pause/Play)
-            context = DefaultContext;
-            wrap    = p_wrap;            
-        }
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        public Tween Start(ProcessContext p_context,TweenStart p_args) { Set(p_args); return (Tween)Start(p_context); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        public Tween Start(TweenStart p_args) { return Start(DefaultContext,p_args); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        new public Tween Start() { return Start(DefaultContext,TweenStart.From(this)); }
+
+        #if UNITY_EDITOR
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        public Tween StartEditor(TweenStart p_args) { return Start(ProcessContext.Editor,p_args); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        new public Tween StartEditor() { return Start(TweenStart.From(this)); }
+        #endif
 
         #endregion
 
         #region Events
 
         /// <summary>
-        /// Event called on each step complete.
+        /// Handler for execution loop
         /// </summary>
-        new public Predicate<Tween> OnStepEvent {
-            get { return (Predicate<Tween>)m_on_step_event; }
-            set { m_on_step_event = value;                  }                
-        }
-        
-        /// <summary>
-        /// Event called upon timer completion
-        /// </summary>
-        new public Action<Tween> OnCompleteEvent {
-            get { return (Action<Tween>)m_on_complete_event; }
-            set { m_on_complete_event = value;               }
-        }
+        new public Action<Tween> OnExecuteEvent;
 
         /// <summary>
-        /// Event called upon timer execution step.
+        /// Handler for state changes
         /// </summary>
-        new public Predicate<Tween> OnExecuteEvent {
-            get { return (Predicate<Tween>)m_on_execute_event; }
-            set { m_on_execute_event = value;               }
-        }
+        new public Action<Tween,TimerState,TimerState> OnChangeEvent;
 
         /// <summary>
-        /// Auxiliary class to method invoke.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="p_event"></param>
-        /// <param name="p_arg"></param>
-        /// <returns></returns>
-        override internal bool InvokeEvent(Delegate p_event,Activity p_arg,bool p_default) {
-            bool res = p_default;
-            if(p_event==null) return res;
-            if(p_event is Action<Tween>)    { Action<Tween>    cb = (Action<Tween>)   p_event;       cb(this); } else
-            if(p_event is Predicate<Tween>) { Predicate<Tween> cb = (Predicate<Tween>)p_event; res = cb(this); }
-            return res;
-        }
+        /// Auxiliary Event Calling
+        /// </summary>        
+        protected override void InternalExecuteEvent(TimerState p_state               ) { if(OnExecuteEvent != null) OnExecuteEvent(this           ); }
+        protected override void InternalChangeEvent (TimerState p_from,TimerState p_to) { if(OnChangeEvent  != null) OnChangeEvent(this,p_from,p_to); }
 
         #endregion
 
         #region Callbacks
 
         /// <summary>
-        /// Validates the execution is allowed to start
-        /// </summary>
-        /// <returns></returns>
-        internal override bool CanStartInternal() {
-            bool will_start = base.CanStartInternal();            
-            if(will_start)
-            //Only assert existing if flag change
-            if(m_prev_will_start != will_start) {                    
-                will_start = CanTweenStartInternal();
-            }
-            m_prev_will_start = will_start;
-            return will_start;
-        }
-        private bool m_prev_will_start;
-
-        /// <summary>
         /// Method to check running possibility when starting the tween.
         /// </summary>
         /// <returns></returns>
-        virtual protected bool CanTweenStartInternal() { return true; }
-
-        /// <summary>
-        /// Completion handler.
-        /// </summary>
-        protected override void OnComplete() {
-            base.OnComplete();
-            m_prev_will_start = false;
-        }
+        virtual protected bool AssertTweenStart() { return true; }
 
         /// <summary>
         /// Updates the tween interpolation during execution.
         /// </summary>
-        internal override void Execute() {
-            switch(state) {
-                case ActivityState.Running: {
-                    if(m_tween==null) break;                    
-                    float r = duration<=0f ? elapsed : progress;
+        protected override void OnStateUpdate(TimerState p_state) {
+
+            base.OnStateUpdate(p_state);
+
+            switch (p_state) {
+                case TimerState.Run: {
+                    if (m_tween == null) break;
+                    float r = duration <= 0f ? elapsed : GetProgress(false);
                     //Transform the ratio
-                    switch(wrap) {
+                    switch (wrap) {
                         case AnimationWrapMode.Clamp: {
                             //After first step clamp the ratio
-                            r=step>0 ? 1f : r;                            
+                            r = step > 0 ? 1f : r;
                         }
                         break;
 
                         case AnimationWrapMode.Pingpong:
                         case AnimationWrapMode.Repeat: {
-                            bool  is_pong = wrap == AnimationWrapMode.Repeat ? false : ((step&1)==1);
-                            if(is_pong) r = 1f - r;
+                            bool is_pong = wrap == AnimationWrapMode.Repeat ? false : ((step & 1) == 1);
+                            if (is_pong) r = 1f - r;
                             m_tween.Lerp(r);
                         }
                         break;
-                    }                    
+                    }
                     //Apply the ratio
                     m_tween.Lerp(r);
                 }
                 break;
             }
-            base.Execute();            
+        }
+
+        /// <summary>
+        /// Handler for state changes in timer
+        /// </summary>        
+        protected override void OnStateChange(TimerState p_from,TimerState p_to) {            
+            //Sample result for tween
+            switch(p_to) {
+                case TimerState.Run: {
+                    //Handle same property tweens and targets to avoid collision
+                    AssertTweenStart();
+                }
+                break;
+            }
+            //Base State Change
+            base.OnStateChange(p_from,p_to);            
         }
 
         #endregion
@@ -631,13 +696,112 @@ namespace UnityExt.Core {
     #endregion
 
     #region class Tween<T>
+
+    #region struct TweenStart<T>
+    /// <summary>
+    /// Struct that initializes a Timer Start
+    /// </summary>
+    public struct TweenStart<T> where T : struct {
+
+        #region static
+        /// <summary>
+        /// Returns a populated start struct using the input instance
+        /// </summary>
+        /// <param name="t"></param>
+        /// <returns></returns>
+        static internal TweenStart<T> From(Tween<T> t) {
+            TweenStart<T> c = new TweenStart<T>();
+            c.m_from    = t.tween.deferredFromValue ? null : t.from;
+            c.to        = t.to;            
+            c.delay     = t.delay;
+            c.duration  = t.duration;
+            c.count     = t.count;
+            c.speed     = t.speed;
+            c.wrap      = t.wrap;
+            c.curve     = t.curve;
+            c.easing    = t.easing;
+            return c;
+        }
+        #endregion
+
+        /// <summary>
+        /// From property
+        /// </summary>
+        public T from { get { return m_from.GetValueOrDefault(default(T)); } set { m_from = value; } }
+        T? m_from;
+
+        /// <summary>
+        /// From property
+        /// </summary>
+        public T to { get { return m_to.GetValueOrDefault(default(T)); } set { m_to = value; } }
+        T? m_to;
+
+        /// <summary>
+        /// Delay before starting
+        /// </summary>
+        public float delay { get { return m_delay ?? 0f; } set { m_delay = value; } }
+        float? m_delay;
+
+        /// <summary>
+        /// Duration of the timer
+        /// </summary>
+        public float duration { get { return m_duration ?? Tween.DefaultDuration; } set { m_duration = value; } }
+        float? m_duration;
+
+        /// <summary>
+        /// Number of steps
+        /// </summary>
+        public int count { get { return m_count ?? 1; } set { m_count = value; } }
+        int? m_count;
+
+        /// <summary>
+        /// Speed of time increments
+        /// </summary>
+        public float speed { get { return m_speed ?? 1f; } set { m_speed = value; } }
+        float? m_speed;
+
+        /// <summary>
+        /// Speed of time increments
+        /// </summary>
+        public AnimationWrapMode wrap { get { return m_wrap ?? AnimationWrapMode.Clamp; } set { m_wrap = value; } }
+        AnimationWrapMode? m_wrap;
+
+        /// <summary>
+        /// Reference to the easing curve
+        /// </summary>
+        public AnimationCurve curve;
+
+        /// <summary>
+        /// Easing method
+        /// </summary>
+        public Func<float,float> easing;
+
+        /// <summary>
+        /// Helper to populate a target instance
+        /// </summary>        
+        internal void To(Tween<T> t) {
+            if(m_from     != null) { t.from     = from; t.tween.deferredFromValue = false; }
+            if(m_to       != null) { t.to       = to;       }
+            if(m_delay    != null) { t.delay    = delay;    }
+            if(m_duration != null) { t.duration = duration; }
+            if(m_count    != null) { t.count    = count;    }
+            if(m_speed    != null) { t.speed    = speed;    }
+            if(m_wrap     != null) { t.wrap     = wrap;     }
+            if(easing     != null) { t.easing   = easing;   } else
+            if(curve      != null) { t.curve    = curve ;   }
+        }
+
+    }
+    #endregion
+
     /// <summary>
     /// Extension of the tween class allowing specifying the type of the property's value ranges.
     /// </summary>
     /// <typeparam name="T">Type of the target's property.</typeparam>
-    public class Tween<T> : Tween {
+    public class Tween<T> : Tween where T : struct {
     
         #region Get/Set
+
         /// <summary>
         /// Returns the interpolator cast to the desired data type manipulation. If a not matching type is used, null is returned.
         /// </summary>
@@ -656,17 +820,46 @@ namespace UnityExt.Core {
         public string property { get { return tween==null ? "" : tween.property; } }
 
         /// <summary>
+        /// Get/Set the starting value of the animation.
+        /// </summary>
+        public T? from { get { return tween == null ? default : tween.interpolator.from; } set { if (tween != null) { tween.deferredFromValue = value == null; if (!tween.deferredFromValue) tween.interpolator.from = value.GetValueOrDefault(default(T)); } } }
+
+        /// <summary>
         /// Get/Set the final value of the animation.
         /// </summary>
         public T to   { get { return tween==null ? default : tween.interpolator.to;   } set { if(tween!=null) tween.interpolator.to = value; } }
 
         /// <summary>
-        /// Get/Set the starting value of the animation.
+        /// Reference to the easing curve
         /// </summary>
-        public T from { get { return tween==null ? default : tween.interpolator.from; } set { if(tween!=null) { tween.deferredFromValue=false; tween.interpolator.from=value; } } }
+        public AnimationCurve curve {  get { return tween==null ? null : tween.interpolator.curve; } set { if (tween != null) tween.interpolator.curve = value; } }
+
+        /// <summary>
+        /// Easing method
+        /// </summary>
+        public Func<float,float> easing { get { return tween == null ? null : tween.interpolator.easing; } set { if (tween != null) tween.interpolator.easing = value; } }
+
         #endregion
 
         #region CTOR
+        /// <summary>
+        /// Creates a new tween with 'id' and associated with a target object and its property
+        /// </summary>
+        /// <param name="p_id">Tween Id</param>
+        /// <param name="p_target">Target Object</param>
+        /// <param name="p_property">Object Property</param>
+        public Tween(string p_id,object p_target,string p_property) : base(p_id) {
+            //Create the interpolator needed for the target object and property
+            tween = new UnityExt.Core.PropertyInterpolator<T>(p_target,p_property,default(T),default(T),Tween.Linear);
+        }
+
+        /// <summary>
+        /// Creates a new tween associated with a target object and its property
+        /// </summary>        
+        /// <param name="p_target">Target Object</param>
+        /// <param name="p_property">Object Property</param>
+        public Tween(object p_target,string p_property) : this("",p_target,p_property) { }
+        /*
         /// <summary>
         /// Creates a new Tween to animate 'property' of a 'target' object.
         /// </summary>
@@ -708,34 +901,75 @@ namespace UnityExt.Core {
         /// Helper
         /// </summary>        
         internal Tween(string p_id,float p_duration,int p_count) : base(p_id,p_duration,p_count) { }
-
-        /// <summary>
-        /// Creates the tween internal structure.
-        /// </summary>        
-        internal void CreateTween(object p_target,string p_property,T p_from,T p_to,bool p_has_from,object p_easing,AnimationWrapMode p_wrap) {                        
-            //First create the interpolator
-            if(p_easing is AnimationCurve)    tween = new PropertyInterpolator<T>(p_target,p_property,p_from,p_to,(AnimationCurve)p_easing);    else
-            if(p_easing is Func<float,float>) tween = new PropertyInterpolator<T>(p_target,p_property,p_from,p_to,(Func<float,float>)p_easing); else
-            tween = new PropertyInterpolator<T>(p_target,p_property,p_from,p_to,(Func<float,float>)null);            
-            tween.deferredFromValue = !p_has_from;
-            //Then keep going with init.
-            CreateTween(p_wrap);
-        }
+        //*/        
         #endregion
 
-        #region Restart
+        #region Operation
+
+        /// <summary>
+        /// Sets this tween parameters
+        /// </summary>
+        /// <param name="p_args"></param>
+        public void Set(TweenStart<T> p_args) { p_args.To(this); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        public Tween<T> Start(ProcessContext p_context,TweenStart<T> p_args) { Set(p_args); return (Tween<T>)base.Start(p_context); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        new public Tween<T> Start(ProcessContext p_context) { return (Tween<T>)Start(p_context,TweenStart<T>.From(this)); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        public Tween<T> Start(TweenStart<T> p_args) { return Start(DefaultContext,p_args); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        new public Tween<T> Start() { 
+            return Start(DefaultContext,TweenStart<T>.From(this)); 
+        }
+
+        #if UNITY_EDITOR
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        public Tween<T> StartEditor(TweenStart<T> p_args) { return Start(ProcessContext.Editor,p_args); }
+
+        /// <summary>
+        /// Starts the tween with the passed arguments
+        /// </summary>
+        /// <returns></returns>
+        new public Tween<T> StartEditor() { return Start(TweenStart<T>.From(this)); }
+        #endif
 
         /// <summary>
         /// Called when tween is ready to start
         /// </summary>
         /// <returns></returns>
-        protected override bool CanTweenStartInternal() {
+        protected override bool AssertTweenStart() {
             //Upon starting clear any ongoing tween besides this one
             //Allow for delayed tweens to overwrite running ones
+            /*
             List<Tween> l = Tween.FindAll("",target,property,ActivityContext.All);                
             for(int i=0;i<l.Count;i++) if(l[i]!=this) if(l[i].state == ActivityState.Running) l[i].Stop();
+            //*/
             return true;
         }
+
+
+        #endregion
+
+        #region Restart
 
         /// <summary>
         /// Restarts the tween from scratch.
@@ -748,23 +982,10 @@ namespace UnityExt.Core {
         /// <param name="p_continue">Flag that tells if the property will keep going from its current value.</param>
         public void Restart(bool p_continue) {
             if(p_continue)if(tween!=null) { tween.deferredFromValue=true; tween.m_from_fetched=false; }
-            base.Restart();
-        }
-
-        /// <summary>
-        /// Restarts the current execution step.
-        /// </summary>
-        new public void RestartStep() {
-            RestartStep(false);
-        }
-
-        /// <summary>
-        /// Restarts the current execution step.
-        /// </summary>
-        /// <param name="p_continue">Flag that tells if the property will keep going from its current value.</param>
-        public void RestartStep(bool p_continue) {
-            if(p_continue)if(tween!=null) { tween.deferredFromValue=true; tween.m_from_fetched=false; }
-            base.RestartStep();
+            time = speed < 0f ? duration : 0f;
+            step = speed < 0f ? count : 0;
+            Stop();
+            Start();
         }
 
         #endregion

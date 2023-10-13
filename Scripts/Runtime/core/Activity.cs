@@ -1,1006 +1,428 @@
-using System;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Threading;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using System.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using Unity.Jobs;
-using System.Reflection;
-using System.Text;
-
-#if UNITY_EDITOR
-using UnityEditor;
-#endif
+using System.Threading;
+using System;
 
 namespace UnityExt.Core {
 
-    #region enum ActivityContext
-
+    #region class Activity<T>
     /// <summary>
-    /// Enumeration that describes the execution context of the activity.
+    /// Extension of Activity to handle FSM functionalities. It has a simple API to handle state change detection and looping.
     /// </summary>
-    public enum ActivityContext {
+    /// <typeparam name="T"></typeparam>
+    public class Activity<T> : Activity, IFSMHandler<T> where T : Enum {
+
         /// <summary>
-        /// No context
+        /// Returns the current state
         /// </summary>
-        None=-1,
+        public T state { get { return fsm==null ? default(T) : fsm.state; } set { if (fsm != null) fsm.state = value; } }
+
         /// <summary>
-        /// All contexts wild card.
+        /// Handler for execution loop
         /// </summary>
-        All = 0,
+        public Action<Activity<T>> OnExecuteEvent;
+
         /// <summary>
-        /// Runs inside Monobehaivour.Update
+        /// Handler for state changes
         /// </summary>
-        Update,
+        public Action<Activity<T>,T,T> OnChangeEvent;
+
         /// <summary>
-        /// Runs inside Monobehaivour.LateUpdate
+        /// Internals
         /// </summary>
-        LateUpdate,
+        protected FSM<T> fsm;
+        
         /// <summary>
-        /// Runs inside Monobehaivour.FixedUpdate
+        /// CTOR.
         /// </summary>
-        FixedUpdate,
+        /// <param name="p_id"></param>
+        public Activity(string p_id = "") : base(p_id) {
+            fsm = new FSM<T>(this,default(T));
+        }
+
         /// <summary>
-        /// Runs inside Monobehaivour.Update but only inside 'async-slice' duration per frame
+        /// Handler called during execution with the current active state
         /// </summary>
-        Async,
+        /// <param name="p_state"></param>
+        virtual protected void OnStateUpdate(T p_state) { }
+
         /// <summary>
-        /// Runs inside a thread, watch out to not use Unity API elements inside it.
+        /// Handler called upon state changes, returns true|false to "approve" the change or not.
+        /// </summary>
+        /// <param name="p_from"></param>
+        /// <param name="p_to"></param>        
+        virtual protected void OnStateChange(T p_from,T p_to) { }
+
+        /// <summary>
+        /// Callled upon state reset.
+        /// </summary>
+        virtual protected void OnStateReset() { }
+
+        /// <summary>
+        /// Auxiliary handler to easily call events of any type variation
+        /// </summary>
+        /// <param name="p_state"></param>
+        virtual protected void InternalExecuteEvent(T p_state) { if (OnExecuteEvent != null) OnExecuteEvent(this); }
+
+        /// <summary>
+        /// Auxiliary handler to easily call events of any type variation
+        /// </summary>
+        /// <param name="p_state"></param>
+        virtual protected void InternalChangeEvent(T p_from,T p_to) { if(OnChangeEvent!=null) OnChangeEvent(this,p_from,p_to); }
+
+        /// <summary>
+        /// IFSMHandler internals
         /// </summary>        
-        Thread,        
-        /// <summary>
-        /// Runs the job passed as parameter in a loop and using schedule
-        /// </summary>
-        JobAsync,
-        /// <summary>
-        /// Runs the job passed as parameter in a loop and using run
-        /// </summary>
-        Job,
-        /// <summary>
-        /// Runs inside EditorApplication.update
-        /// </summary>
-        Editor
-    }
+        void IFSMHandler<T>.OnStateUpdate(FSM<T> p_fsm,T p_state)       { OnStateUpdate(p_state    ); InternalExecuteEvent(p_state    ); }
+        void IFSMHandler<T>.OnStateChange(FSM<T> p_fsm,T p_from,T p_to) { OnStateChange(p_from,p_to); InternalChangeEvent (p_from,p_to); }
+        void IFSMHandler<T>.OnStateReset (FSM<T> p_fsm)                 { OnStateReset(); }
 
+        /// <summary>
+        /// Proxy execute the FSM
+        /// </summary>        
+        override protected void OnExecute(ProcessContext p_context) { fsm.Update(); }
+    }
     #endregion
 
-    #region enum ActivityState
-
+    #region class Activity
     /// <summary>
-    /// Enumeration that describes the execution state of the activity.
+    /// Most basic class depicting an activity that is attached to a process.
+    /// It contains the most raw access to the execution loops.
+    /// Can be paired with the interfaces implmenting different loops such as IUpdateable and IThread.
+    /// Can be used for editor context too.
     /// </summary>
-    public enum ActivityState {
-        /// <summary>
-        /// Just created activity.
-        /// </summary>
-        Idle,
-        /// <summary>
-        /// Waiting for execution
-        /// </summary>
-        Queued,
-        /// <summary>
-        /// Active execution.
-        /// </summary>
-        Running,
-        /// <summary>
-        /// Finished
-        /// </summary>
-        Complete,
-        /// <summary>
-        /// Stopped
-        /// </summary>
-        Stopped        
-    }
-
-    #endregion
-
-    /// <summary>
-    /// Class that implements any async activity/processing.
-    /// It can run in different contexts inside unity (mainthread) or separate thread, offering an abstraction layer Monobehaviour/Thread agnostic.
-    /// </summary>
-    public class Activity : INotifyCompletion, IStatusProvider, IProgressProvider {
+    public class Activity : IProcess, IProgressProvider {
 
         #region static
-
         /// <summary>
         /// CTOR
         /// </summary>
         static Activity() {
             //Warmup non-thread-safe data
-            m_app_persistent_dp = Application.persistentDataPath;
+            m_app_persistent_dp = Application.persistentDataPath.Replace("\\","/");
             m_app_platform      = Application.platform.ToString().ToLower();
         }
         static internal string m_app_persistent_dp;
         static internal string m_app_platform;
 
         /// <summary>
-        /// Reference to the activity manager.
+        /// Default Context to start Activities
         /// </summary>
-        static public ActivityManager manager { get { return ActivityManager.manager; } }
-        
-        /// <summary>
-        /// Execution time slice for async nodes.
-        /// </summary>
-        static public int asyncTimeSlice = 4;
-
-        /// <summary>
-        /// Maximum created threads for paralell nodes.
-        /// </summary>
-        static public int maxThreadCount = Mathf.Max(1,Environment.ProcessorCount/4);
-
-        #region Add/Remove/Find
-
-        /// <summary>
-        /// Adds any object implementing the interfaces for exection.
-        /// </summary>
-        /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
-        //static public void Add(object p_node) { if(manager)manager.handler.AddInterface(p_node); }
-        static public void Add(object p_node) { if(manager)manager.AddInterface(p_node); }
-
-        /// <summary>
-        /// Removes any object implementing the interfaces for exection.
-        /// </summary>
-        /// <param name="p_node">Execution node. Must implement one or more Activity related interfaces.</param>
-        //static public void Remove(object p_node) { if(m_manager)m_manager.handler.RemoveInterface(p_node); }
-        static public void Remove(object p_node) { if(manager)manager.RemoveInterface(p_node); }
-
-        /// <summary>
-        /// Removes all activities and interfaces from exection.
-        /// </summary>
-        //static public void Kill() { if(m_manager)m_manager.handler.Clear(); }
-        static public void Kill() { if(manager)manager.Kill(); }
-
-        /// <summary>
-        /// Searches for a single activity by id and context.
-        /// </summary>
-        /// <param name="p_id">Activity id to search.</param>
-        /// <param name="p_context">Specific context to be searched.</param>
-        /// <typeparam name="T">Activity derived type.</typeparam>
-        /// <returns>Activity found or null</returns>
-        //static public T Find<T>(string p_id,ActivityContext p_context) where T : Activity { if(manager) return manager.handler.Find<T>(p_id,p_context); return null; }
-        static public T Find<T>(string p_id,ActivityContext p_context) where T : Activity { if(manager) return manager.Find<T>(p_id,p_context); return null; }
-
-        /// <summary>
-        /// Searches for a single activity by id in all contexts.
-        /// </summary>
-        /// <param name="p_id">Activity id to search.</param>        
-        /// <typeparam name="T">Activity derived type.</typeparam>
-        /// <returns>Activity found or null</returns>
-        static public T Find<T>(string p_id) where T : Activity { return Find<T>(p_id,ActivityContext.All); }
-
-        /// <summary>
-        /// Searches for all activities matching the id and context.
-        /// </summary>
-        /// <param name="p_id">Activity id to search.</param>
-        /// <param name="p_context">Specific context to be searched.</param>
-        /// <typeparam name="T">Activity derived type.</typeparam>
-        /// <returns>List of results or empty list.</returns>
-        //static public List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity { List<T> res=null; if(manager) res = manager.handler.FindAll<T>(p_id,p_context); return res==null ? new List<T>() : res; }
-        static public List<T> FindAll<T>(string p_id,ActivityContext p_context) where T : Activity {
-            List<T> res = null;
-            if(manager) {
-                if(p_context == ActivityContext.All) {
-                    res = new List<T>();
-                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.Update     ));
-                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.LateUpdate ));
-                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.FixedUpdate));
-                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.Thread     ));
-                    res.AddRange(manager.FindAll<T>(p_id,ActivityContext.Async      ));
-                }
-                else {
-                    res = manager.FindAll<T>(p_id,p_context);
-                }                                
-            }
-            return res == null ? new List<T>() : res;
-        }
-
-        /// <summary>
-        /// Searches for all activities matching the context.
-        /// </summary>        
-        /// <param name="p_context">Specific context to be searched.</param>
-        /// <typeparam name="T">Activity derived type.</typeparam>
-        /// <returns>List of results or empty list.</returns>
-        static public List<T> FindAll<T>(ActivityContext p_context) where T : Activity { return FindAll<T>("",p_context); }
-
-        /// <summary>
-        /// Searches for all activities matching the id in all contexts.
-        /// </summary>
-        /// <param name="p_id">Activity id to search.</param>        
-        /// <typeparam name="T">Activity derived type.</typeparam>
-        /// <returns>List of results or empty list.</returns>
-        static public List<T> FindAll<T>(string p_id) where T : Activity { return FindAll<T>(p_id,(ActivityContext)(-1)); }
-
-        /// <summary>
-        /// Searches all activities regardless of 'id'.
-        /// </summary>
-        /// <typeparam name="T">Activity derived type.</typeparam>
-        /// <returns>List of results or empty list.</returns>
-        static public List<T> FindAll<T>() where T : Activity { return FindAll<T>("",ActivityContext.All); }
+        static public ProcessContext DefaultContext = ProcessContext.None;
 
         #endregion
 
-        #region Run/Loop
+        #region State/Variables
 
         /// <summary>
-        /// Helper
-        /// </summary>        
-        static internal Activity Create(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,ActivityContext p_context) {
-            Activity n = new Activity(p_id,p_context);
-            n.OnCompleteEvent = p_on_complete;
-            n.OnExecuteEvent  = p_on_execute;
-            return n;
-        }
-        
-        /// <summary>
-        /// Creates and starts an activity for constant loop execution.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
-        /// <param name="p_context">Execution context to run.</param>
-        /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Predicate<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create(p_id,p_callback,null,p_context); a.Start(); return a; }
-            
-        /// <summary>
-        /// Creates and starts an activity for constant loop execution.
-        /// </summary>        
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>
-        /// <param name="p_context">Execution context to run.</param>
-        /// <returns>The running activity</returns>
-        static public Activity Run(System.Predicate<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create("",p_callback,null,p_context); a.Start(); return a; }
-
-        /// <summary>
-        /// Creates and start a single execution activity.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <param name="p_context">Execution context.</param>
-        /// <returns>The running activity</returns>
-        static public Activity Run(string p_id,System.Action<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create(p_id,null,p_callback,p_context); a.Start(); return a; }
-        
-        /// <summary>
-        /// Creates and start a single execution activity.
-        /// </summary>
-        /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <param name="p_context">Execution context.</param>
-        /// <returns>The running activity</returns>
-        static public Activity Run(System.Action<Activity> p_callback,ActivityContext p_context = ActivityContext.Update) { Activity a = Create("",null,p_callback,p_context); a.Start(); return a; }
-
-        #endregion
-
-        #endregion
-
-        /// <summary>
-        /// Reference to the process containing this activity
-        /// </summary>
-        internal ActivityProcess process { get; set; }
-
-        /// <summary>
-        /// Id of this Activity.
+        /// Activity id string
         /// </summary>
         public string id;
 
         /// <summary>
-        /// Last execution ms.
+        /// Flag that allows this activity to run or not.
         /// </summary>
-        public float profilerMs;
+        public bool enabled;
 
         /// <summary>
-        /// Last execution ns
+        /// Elapsed Time
         /// </summary>
-        public long profilerUs { get { return (long)(Mathf.Round(profilerMs*10f)*100f); } }
+        public float elapsed { get; protected set; }
 
         /// <summary>
-        /// Returns a formatted string telling the profiled time.
+        /// Current DeltaTime
         /// </summary>
-        public string profilerTimeStr { get { long ut = profilerUs; return profilerMs<1f ? (ut<=0 ? "0 ms" : $"{ut} us") : $"{Mathf.RoundToInt(profilerMs)} ms"; }  }
+        public float deltaTime { get; protected set; }
 
         /// <summary>
-        /// Execution state
+        /// Flag that tells this activity is completed        
         /// </summary>
-        public ActivityState state { get; internal set; }        
+        public bool completed { get; protected set; }
+
+        /// <summary>
+        /// Flag that tells this activity is threaded.
+        /// </summary>
+        public bool threaded { get; private set; }
+
+        /// <summary>
+        /// Flag that tells this activity is editor bound
+        /// </summary>
+        public bool editor { get; private set; }
         
         /// <summary>
-        /// Execution context.
+        /// Flag that tells this activity is or is not affected by timescale
         /// </summary>
-        public ActivityContext context { get { return m_context; } internal set { m_context = value == ActivityContext.All ? ActivityContext.Update : value; } }
-        private ActivityContext m_context;
+        public bool useTimeScale { get { return process == null ? m_use_time_scale : process.useTimeScale; } set { m_use_time_scale = value; if (process != null) process.useTimeScale = value; } }
+        private bool m_use_time_scale;
 
         /// <summary>
-        /// Has the activity finished.
+        /// Flag that tells this activity is or is not deferred (runs within timeslice)
         /// </summary>
-        public bool completed { get { return state == ActivityState.Complete; } }
+        public bool deferred { get { return process == null ? m_deferred : process.deferred; } set { m_deferred = value;  if(process != null) process.deferred = value; } }
+        private bool m_deferred;
 
         /// <summary>
-        /// Flag that tells this activity can run.
+        /// Get the exception in case of errouneous state
         /// </summary>
-        public bool enabled { get { return m_enabled; } set { if(m_enabled!=value) { m_enabled=value; if(m_enabled) OnEnable(); else OnDisable(); } } }
-        private bool m_enabled;
+        public Exception exception { get; protected set; }
 
         /// <summary>
-        /// Handler for when this activity is enabled.
+        /// Returns a flag in case this activity is in error state
         /// </summary>
-        virtual protected void OnEnable() { }
+        public bool isError { get { return exception != null; } }
 
         /// <summary>
-        /// Handler for when this activity is disabled.
+        /// Executing context flag, during start/stop its the combined flags and during execution its the currently active one.
         /// </summary>
-        virtual protected void OnDisable() { }
-
-        #region Events
+        public ProcessContext context { get; protected set; }
 
         /// <summary>
-        /// Callback for completion.
+        /// Internals
         /// </summary>
-        public Action<Activity> OnCompleteEvent {
-            get { return (Action<Activity>)m_on_complete_event; }
-            set { m_on_complete_event = value;                  }
-        }
-        protected Delegate m_on_complete_event;
-
-        /// <summary>
-        /// Callback for execution.
-        /// </summary>
-        public Predicate<Activity> OnExecuteEvent {
-            get { return (Predicate<Activity>)m_on_execute_event; }
-            set { m_on_execute_event = value;                  }
-        }
-        protected Delegate m_on_execute_event;
-
-        /// <summary>
-        /// Auxiliary class to method invoke.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="p_event"></param>
-        /// <param name="p_arg"></param>
-        /// <returns></returns>
-        virtual internal bool InvokeEvent(Delegate p_event,Activity p_arg,bool p_default=false) {
-            bool res = p_default;
-            if(p_event==null) return res;
-            if(p_event is Action<Activity>)    { Action<Activity>    cb = (Action<Activity>)p_event;          cb(this); } else
-            if(p_event is Predicate<Activity>) { Predicate<Activity> cb = (Predicate<Activity>)p_event; res = cb(this); }
-            return res;
-        }
+        private bool m_active;
 
         #endregion
 
-        /// <summary>
-        /// Helper task to use await.
-        /// </summary>
-        internal Task m_task;
-        internal int  m_yield_ms;
-        internal CancellationTokenSource m_task_cancel;
-        
         #region CTOR
-
         /// <summary>
-        /// Creates a new Activity.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching</param>
-        /// <param name="p_context">Execution Context</param>
-        public Activity(string p_id,ActivityContext p_context) { InitActivity(p_id,p_context); }
-        
-        /// <summary>
-        /// Creates a new activity, default to 'Update' context.
-        /// </summary>
-        /// <param name="p_id">Activity id for searching</param>
-        public Activity(string p_id) { InitActivity(p_id, ActivityContext.Update); }
-
-        /// <summary>
-        /// Creates a new activity, default to 'Update' context and auto generated id.
-        /// </summary>
-        public Activity() { InitActivity("", ActivityContext.Update); }
-
-        /// <summary>
-        /// Internal build the activity
+        /// CTOR.
         /// </summary>
         /// <param name="p_id"></param>
-        /// <param name="p_context"></param>
-        internal void InitActivity(string p_id,ActivityContext p_context) {
-            state       = ActivityState.Idle;
-            context     = p_context;
-            enabled     = true;
-            id = p_id;
-            if(!string.IsNullOrEmpty(id)) { return; }
-            if(m_type_name_lut == null) m_type_name_lut = new Dictionary<Type, string>();
-            if(m_id_sb==null)           m_id_sb         = new StringBuilder();
-            m_id_sb.Clear();
-            Type t = GetType();
-            string tn = "";
-            if(m_type_name_lut.ContainsKey(t)) {
-                tn=m_type_name_lut[t];
-            }
-            else { 
-                Type[] gtl = t.GetGenericArguments();
-                tn = t.Name.ToLower().Replace("`","");
-                if(gtl.Length>0) { tn=tn.Replace("1",""); tn+=$"<{gtl[0].Name.ToLower()}>"; }
-                m_type_name_lut[t]=tn; 
-            }
-            if(!string.IsNullOrEmpty(tn)) { m_id_sb.Append(tn); m_id_sb.Append("-"); }
-            uint hc = (uint)GetHashCode();
-            //GC Free ToHex
-            while(hc>0) { m_id_sb.Append(m_id_hex_lut[(int)(hc&0xf)]); hc = hc>>4; }            
-            id = m_id_sb.ToString();                        
+        public Activity(string p_id="") {
+            id           = p_id;
+            elapsed      = 0f;
+            deltaTime    = 0f;
+            threaded     = false;
+            editor       = false;
+            useTimeScale = false;
+            deferred     = false;
+            completed    = false;
+            enabled      = true;
+            context      = ProcessContext.None;
         }
-        static private Dictionary<Type,string> m_type_name_lut;
-        static private StringBuilder           m_id_sb;
-        static private string                  m_id_hex_lut = "0123456789abcdef";
-        
         #endregion
-
-        /// <summary>
-        /// Adds this activity to the queue.
-        /// </summary>
-        public void Start() {
-            //If activity properly not running reset to idle
-            if(state == ActivityState.Complete) state = ActivityState.Idle;
-            if(state == ActivityState.Stopped)  state = ActivityState.Idle;
-            //If idle init task
-            if(state == ActivityState.Idle)
-            if(m_task==null) {
-                m_task_cancel = new CancellationTokenSource();
-                m_task        = new Task(OnTaskCompleteDummy,m_task_cancel.Token);                
-                m_yield_ms    = 0;
-            }            
-            //Add to execution queue
-            //if(manager)manager.handler.AddActivity(this);            
-            if(manager)manager.Add(this);            
-        }
-        private void OnTaskCompleteDummy() {    
-            //Sleep is inside task thread, so safe to use
-            if(m_yield_ms>0) System.Threading.Thread.Sleep(m_yield_ms);
-            //Clear up
-            m_task        = null;
-            m_task_cancel = null;
-        }
-        
-        /// <summary>
-        /// Removes this activity from the execution pool.
-        /// </summary>
-        //public void Stop() { if(manager)manager.handler.RemoveActivity(this); }
-        public void Stop() { if(manager)manager.Remove(this); }
-
-        /// <summary>
-        /// Executes one loop step.
-        /// </summary>
-        virtual internal void Execute() {            
-            switch(state) {
-                case ActivityState.Stopped:  return;
-                case ActivityState.Complete: return;
-                case ActivityState.Idle:     return;
-                case ActivityState.Queued:  { 
-                    if(!CanStart())         break;
-                    if(!CanStartInternal()) break;
-                    OnStart();                    
-                    state=ActivityState.Running; 
-                }
-                break;
-            }
-            switch(state) {
-                case ActivityState.Running:  {
-                    //Internal execution
-                    bool v0 = OnExecuteInternal();
-                    //Repeat until completion (always completed for regular activity)
-                    if(v0)  break;
-                    //Execute main activity handler
-                    bool v1 = OnExecute();
-                    //Default delegate always completed if undefined
-                    bool v2 = InvokeEvent(m_on_execute_event,this,false);
-                    //Early break if either execution wants to continue
-                    if(v1) break;
-                    if(v2) break;
-                    //Extra validate completion
-                    bool v3 = CanCompleteInternal();
-                    //If can't complete keep going
-                    if(!v3) break;
-                    //Mark complete
-                    state = ActivityState.Complete;
-                    //Call internal handler
-                    OnComplete();
-                    //Call delegate
-                    InvokeEvent(m_on_complete_event,this);
-                    //Start 'await' Task
-                    if(m_task!=null) m_task.Start();                    
-                }
-                break;
-            }
-        }
 
         #region Virtuals
 
-        /// <summary>
-        /// Handler for when this activity was just added.
-        /// </summary>
-        virtual protected void OnAdded() { }
-
-        /// <summary>
-        /// Handler for activity execution start
-        /// </summary>
         virtual protected void OnStart() { }
 
-        /// <summary>
-        /// Handler for activity execution loop steps.
-        /// </summary>
-        /// <returns>Flag telling the execution loop must continue or not</returns>
-        virtual protected bool OnExecute() { return false; }
+        virtual protected void OnStop() { }
 
-        /// <summary>
-        /// Handler for activity completion.
-        /// </summary>
-        virtual protected void OnComplete() { }
+        virtual protected void OnExecute(ProcessContext p_context) { }
 
-        /// <summary>
-        /// Handler for the activity stop.
-        /// </summary>
-        virtual protected void OnStop() { }                                                                                                                                                                                                                                                                                                                 
-
-        /// <summary>
-        /// Auxiliary method to validate if starting is allowed.
-        /// </summary>
-        /// <returns>Flag telling the activity can start and execute its loop, otherwise will keep looping here and 'Queued'</returns>
-        virtual protected bool CanStart() { return true; }
+        virtual protected void OnError() { }
 
         #endregion
 
-        #region Internal Extensions
+        #region Operation
+        /// <summary>
+        /// Starts this activity at the specified context flags
+        /// </summary>
+        public Activity Start(ProcessContext p_context) {
+            if (m_active) return this;
+            m_active = true;
+            InternalStart(false,p_context); 
+            return this;  
+        }
 
         /// <summary>
-        /// Helper method to handle unity jobs.
+        /// Starts this activity based by the interfaces implemented.
         /// </summary>
-        /// <returns></returns>
-        virtual internal bool OnExecuteInternal() { return false; }
+        public Activity Start() {
+            if (m_active) return this;
+            m_active = true;
+            InternalStart(false,DefaultContext); 
+            return this;  
+        }
+
+        #if UNITY_EDITOR
+        /// <summary>
+        /// Starts this activity for editor context.
+        /// </summary>
+        public Activity StartEditor(ProcessContext p_context) {
+            if (m_active) return this;
+            m_active = true;
+            InternalStart(true,p_context); 
+            return this; 
+        }
 
         /// <summary>
-        /// Helper to allow the activity to start or not.
+        /// Starts this activity in editor context based by the interfaces implemented.
         /// </summary>
-        /// <returns></returns>
-        virtual internal bool CanStartInternal()  { return true; }
+        public Activity StartEditor() {
+            if(m_active) return this; 
+            m_active = true;
+            InternalStart(false,ProcessContext.None); 
+            return this;  
+        }
+        #endif
 
         /// <summary>
-        /// Helper to allow the activity to complete or not.
+        /// Stops this activity
         /// </summary>
-        /// <returns></returns>
-        virtual internal bool CanCompleteInternal()  { return true; }
+        public void Stop() {
+            if (!m_active) return;
+            m_active = false;
+            InternalStop(); 
+        }
 
         /// <summary>
-        /// Handler for when the activity was officially removed from Activity Manager.
+        /// Throws an exception, stop execution and raise or not a C# exception
         /// </summary>
-        virtual internal void OnManagerRemoveInternal() { 
-            //Only run if not completed
-            if(state == ActivityState.Complete) return;
-            state = ActivityState.Stopped;
-            if(m_task==null) return;
-            m_task_cancel.Cancel();
-            m_task        = null;
-            m_task_cancel = null;
-            OnStop();
-        } 
-        
-        /// <summary>
-        /// Handler for when this node is added in the manager.
-        /// </summary>
-        virtual internal void OnManagerAddInternal() { 
-            OnAdded(); 
+        /// <param name="p_error"></param>
+        /// <param name="p_raise_event"></param>
+        public void Throw(Exception p_error,bool p_raise_event=false) {
+            exception = p_error;
+            OnError();
+            Stop();
+            if(p_raise_event) {
+                throw p_error;
+            }
         }
 
         #endregion
 
-        #region Async/Await
-
+        #region Async/Await        
         /// <summary>
         /// Yields this activity until completion and wait delay seconds before continuying.
         /// </summary>
         /// <param name="p_delay">Extra delay seconds after completion</param>
         /// <returns>Task to be waited</returns>
-        public Task Yield(float p_delay=0f) { m_yield_ms = (int)(p_delay*1000f); return m_task; }
+        public Task Yield(float p_delay = 0f) {
+            return process == null ? Task.Delay((int)(p_delay * 1000f)) : process.Yield(p_delay);            
+        }
+
+        /// <summary>
+        /// Waits for completion until timeout, then stops this activity.
+        /// </summary>
+        /// <param name="p_delay"></param>
+        /// <returns></returns>
+        public Task<bool> Wait(float p_timeout = 0f) {
+            return process==null ? Task.FromResult<bool>(false) : process.Wait(p_timeout);
+        }
 
         /// <summary>
         /// Reference to the awaiter.
         /// </summary>
         /// <returns>Current awaiter for 'await' operator.</returns>
-        public TaskAwaiter GetAwaiter() { return m_task==null ? new TaskAwaiter() : m_task.GetAwaiter(); }
-
-        /// <summary>
-        /// INotification implement.
-        /// </summary>
-        /// <param name="completed">Continue callback.</param>
-        public void OnCompleted(System.Action completed) { completed(); }
-
-        #endregion
-
-        #region IStatusProvider
-
-        /// <summary>
-        /// Returns this activity execution state converted to status flags.
-        /// </summary>
-        /// <returns>Current activity status</returns>
-        virtual public StatusType GetStatus() {
-            switch(state) {
-                case ActivityState.Idle:
-                case ActivityState.Queued:   return StatusType.Idle;
-                case ActivityState.Running:  return StatusType.Running;
-                case ActivityState.Complete: return StatusType.Success;
-                case ActivityState.Stopped:  return StatusType.Cancelled;
-            }
-            return StatusType.Invalid;
-        }
+        public TaskAwaiter GetAwaiter() { return process == null ? new TaskAwaiter() : process.GetAwaiter(); }
 
         #endregion
 
         #region IProgressProvider
-
         /// <summary>
-        /// Returns this activity progress status
+        /// Returns the execution progress of this activity.
         /// </summary>
-        /// <returns>Activity progress, eihter 0.0 = not running, 0.5f = running and 1.0 = complete/stopped.</returns>
-        virtual public float GetProgress() {
-            switch(state) {
-                case ActivityState.Idle:  
-                case ActivityState.Queued:   return 0f;
-                case ActivityState.Running:  return 0.5f;
-                case ActivityState.Complete: return 1f;
-                case ActivityState.Stopped:  return 1f;
-            }
-            return 0f;
-        }
-
+        /// <returns></returns>
+        virtual public float GetProgress() { return m_progress; }
+        private float m_progress;
         #endregion
 
-    }
-
-    #region class Activity<T>
-
-    /// <summary>
-    /// Activity class extension to support unity jobs creation in some methods.
-    /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public class Activity<T> : Activity where T : struct {
-
-        #region static
-
+        #region Internals
         /// <summary>
-        /// Workaround for unity's annoying warning to force complete jobs when they exceed this limit.
+        /// Reference to the process
         /// </summary>
-        //static public int jobFrameLimit = 4;
-
-        #region CRUD
-
+        private Process process { get { return ((IProcess)this).process; } }
+        Process IActivity.process { get; set; }        
         /// <summary>
-        /// Auxiliary activity creation
+        /// Activity Start
+        /// </summary>        
+        virtual protected void InternalStart(bool p_editor,ProcessContext p_context) {            
+            threaded  = (Process.Locals.GetContexts(this,p_editor) & ProcessContext.ThreadMask)!=0;
+            editor    = p_editor;
+            completed = false;            
+            ProcessFlags f = ProcessFlags.None;
+            if(m_deferred       ) f |= ProcessFlags.Deferred;
+            if(m_use_time_scale ) f |= ProcessFlags.TimeScale;
+
+            m_progress  = 0f;
+            elapsed     = 0f;
+            deltaTime   = 0f;
+            exception   = null;
+
+            Process p = null;            
+            if (p_editor) {
+                p = Process.StartEditor(this,p_context,f);
+            } else {
+                p = Process.Start(this,p_context,f);
+            }
+            p.name = id;
+            context = p==null ? ProcessContext.None : p.context;            
+        }        
+        /// <summary>
+        /// Timings/Clocks
+        /// </summary>        
+        private void InternalTiming(ProcessContext p_context,ProcessState p_state) {
+            ProcessContext ctx = p_context;
+            switch (p_state) {
+                case ProcessState.Start: { elapsed = 0f; deltaTime = 0f; } break;
+                case ProcessState.Run: {
+                    //If disabled don't update time
+                    if (!enabled) { deltaTime = 0f; break; }
+                    float dt = process==null ? 0f : process.deltaTime;
+                    //Only use 'delta time' when matching threaded/non threaded context
+                    bool is_ctx_thread = (ctx & ProcessContext.ThreadMask) != 0;
+                    if ( threaded) { if ( is_ctx_thread) { deltaTime = dt; elapsed += deltaTime; } }
+                    if (!threaded) { if (!is_ctx_thread) { deltaTime = dt; elapsed += deltaTime; } }
+                }
+                break;
+            }
+        }
+        /// <summary>
+        /// Internal Process Loop Call
+        /// </summary>        
+        void IProcess.OnProcessUpdate(ProcessContext p_context,ProcessState p_state) { InternalProcessUpdate(p_context,p_state); }
+        /// <summary>
+        /// Handler for process callbacks
         /// </summary>
-        /// <param name="p_id"></param>
-        /// <param name="p_on_execute"></param>
-        /// <param name="p_on_complete"></param>
         /// <param name="p_context"></param>
-        /// <returns></returns>
-        static internal Activity CreateJobActivity(string p_id,System.Predicate<Activity> p_on_execute,System.Action<Activity> p_on_complete,bool p_async) {            
-            Activity<T> a = new Activity<T>(p_id,p_async);
-            a.OnCompleteEvent = p_on_complete;
-            a.OnExecuteEvent  = p_on_execute;
-            return a;                        
-        }
-
-        #endregion
-
-        #region Run / Loop
-
-        /// <summary>
-        /// Creates and starts an Activity that executes the desired Unity job in a loop.
-        /// </summary>
-        /// <typeparam name="T">Type derived from unity's job interfaces</typeparam>
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
-        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
-        /// <returns>The running activity</returns>
-        static public Activity<T> Run(string p_id,System.Predicate<Activity> p_callback,bool p_async=true) { Activity a = CreateJobActivity(p_id,p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
-
-        /// <summary>
-        /// Creates and starts an Activity that executes the desired Unity job in a loop.
-        /// </summary>        
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the execution loop. Return 'true' to keep running or 'false' to stop.</param>        
-        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
-        /// <returns></returns>
-        static public Activity<T> Run(System.Predicate<Activity> p_callback,bool p_async=true) { Activity a = CreateJobActivity("",p_callback,null,p_async); a.Start(); return (Activity<T>)a; }
-
-        #endregion
-
-        #region Run / Once
-
-        /// <summary>
-        /// Creates and start a single execution activity performing the specified unity job.
-        /// </summary>        
-        /// <param name="p_id">Activity id for searching.</param>
-        /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
-        /// <returns>The running activity</returns>
-        static public Activity<T> Run(string p_id,System.Action<Activity> p_callback=null,bool p_async=true) { Activity a = CreateJobActivity(p_id,null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
-
-        /// <summary>
-        /// Creates and start a single execution activity performing the specified unity job.
-        /// </summary>        
-        /// <param name="p_callback">Callback for handling the activity completion.</param>        
-        /// <param name="p_async">Flag that tells if the job will run async (Schedule) or sync (Run)</param>
-        /// <returns>The running activity</returns>
-        static public Activity<T> Run(System.Action<Activity> p_callback=null,bool p_async=true) { Activity a = CreateJobActivity("",null,p_callback,p_async); a.Start(); return (Activity<T>)a; }
-
-        #endregion
-
-        #endregion
-
-        #region CTOR
-
-        /// <summary>
-        /// Creates a new activity choosing between running the job sync or async (Run or Schedule)
-        /// </summary>
-        /// <param name="p_id"></param>
-        /// <param name="p_async"></param>
-        public Activity(string p_id,bool p_async) { InitActivity(p_id,p_async); }
-
-        /// <summary>
-        /// Creates a new activity choosing between running the job sync or async (Run or Schedule)
-        /// </summary>
-        /// <param name="p_id"></param>
-        public Activity(string p_id) { InitActivity(p_id,true); }
-
-        /// <summary>
-        /// Creates a new activity choosing between running the job sync or async (Run or Schedule)
-        /// </summary>
-        public Activity() { InitActivity("",true); }
-
-        #region InitActivity
-
-        /// <summary>
-        /// Internal build the activity for jobs.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="p_id"></param>
-        internal void InitActivity(string p_id,bool p_async) {
-            //Init base activity
-            InitActivity(p_id,p_async ? ActivityContext.JobAsync : ActivityContext.Job);            
-            //Init flags
-            m_has_job          = false;
-            m_has_job_parallel = false;
-            //Check if it allows parallel for
-            Type[] itf_l = typeof(T).GetInterfaces();
-            for(int i = 0; i<itf_l.Length; i++) {
-                string tn = itf_l[i].Name;
-                if(tn.Contains("IJobParallelFor")) { m_has_job=true; m_has_job_parallel=true; }
-                if(tn.Contains("IJob"))            { m_has_job=true; }
-            }
-
-            if(!m_has_job) {
-                Debug.LogWarning($"Activity.{typeof(T).Name}> Type 'T' does not implement no 'IJob' related interface. UnityJobs will not work.");
-            }
-
-            //Create job instance
-            job = m_has_job ? new T() : default(T);
-            //Init flags            
-            m_is_scheduled = false;            
-            //If parallel length and step <=0 execute as regular job
-            m_job_parallel_length = 0;
-            m_job_parallel_step   = 0;
-            //Some caching
-            if(m_jb_ext_type   == null) m_jb_ext_type   = typeof(IJobExtensions);
-            if(m_jbpf_ext_type == null) m_jbpf_ext_type = typeof(IJobParallelForExtensions);
-            if(m_mkg_args      == null) m_mkg_args      = new Type[1];
-            //Fetch reflection static methods converted to the desired type
-            if(m_jb_run==null)      m_jb_run        = GetMethod(m_jb_ext_type,"Run",     ref m_jb_run_base);
-            if(m_jb_schedule==null) m_jb_schedule   = GetMethod(m_jb_ext_type,"Schedule",ref m_jb_schedule_base);
-            //Create arguments containers for each method signatures
-            if(m_args1==null)       m_args1 = new object[1];
-            if(m_args2==null)       m_args2 = new object[2];            
-            //Skip if no parallel job
-            if(!m_has_job_parallel) return;
-            //Fetch reflection static methods converted to the desired type
-            if(m_jbpf_run==null)        m_jbpf_run      = GetMethod(m_jbpf_ext_type,"Run",     ref m_jbpf_run_base);
-            if(m_jbpf_schedule==null)   m_jbpf_schedule = GetMethod(m_jbpf_ext_type,"Schedule",ref m_jbpf_schedule_base);
-            //Create arguments containers for each method signatures
-            if(m_args4==null)           m_args4 = new object[4];            
-        }
-        static Type m_jb_ext_type;
-        static Type m_jbpf_ext_type;
-        static Type[] m_mkg_args;
-        static MethodInfo m_jb_run_base;
-        static MethodInfo m_jb_schedule_base;
-        static MethodInfo m_jbpf_run_base;
-        static MethodInfo m_jbpf_schedule_base;
-        MethodInfo m_jb_run;
-        MethodInfo m_jb_schedule;
-        MethodInfo m_jbpf_run;
-        MethodInfo m_jbpf_schedule;
-        object[] m_args1;
-        object[] m_args2;        
-        object[] m_args4;
-
-        /// <summary>
-        /// Helper to extract and convert the job run/schedule methods and work by reflection
-        /// </summary>
-        /// <param name="p_type"></param>
-        /// <param name="p_name"></param>
-        /// <returns></returns>
-        internal static MethodInfo GetMethod(Type p_type,string p_name,ref MethodInfo p_cache) {            
-            //Assign cache
-            MethodInfo res = p_cache;            
-            if(res==null) { 
-                //If no cache get methods and search
-                MethodInfo[] l = p_type.GetMethods();
-                for(int i=0;i<l.Length;i++) if(l[i].Name == p_name) { res = l[i]; break; }
-            }            
-            //If still null skip
-            if(res==null) return res;
-            //Assign cache
-            if(p_cache==null) p_cache = res;
-            //Create the generic method
-            m_mkg_args[0] = typeof(T);
-            return res.MakeGenericMethod(m_mkg_args);
-        }
-
-        #endregion
-
-        #endregion
-
-        /// <summary>
-        /// Overrides the base class allowing to switch between job and jobsync
-        /// </summary>
-        new public ActivityContext context {
-            get { return base.context; }
-            set {
-                if(value != ActivityContext.Job) if(value != ActivityContext.JobAsync) { Debug.LogWarning($"Activity.{typeof(T).Name}> Can't choose contexts different than Job/JobAsync, will ignore."); return; }
-                if(m_is_scheduled) { handle.Complete(); m_is_scheduled = false; }
-                base.context = value;
+        /// <param name="p_state"></param>
+        private void InternalProcessUpdate(ProcessContext p_context,ProcessState p_state) {
+            ProcessContext ctx = p_context;
+            ProcessState s = p_state;            
+            //Execute main loop
+            switch (s) {
+                case ProcessState.Start: {
+                    m_progress = 0.0f;
+                    elapsed    = 0f;
+                    deltaTime  = 0f;
+                    context = p_context;
+                    OnStart();
+                    m_progress = 0.5f;
+                }
+                break;
+                case ProcessState.Stop: {
+                    m_progress = 1.0f;
+                    completed = true;
+                    context = p_context;
+                    OnStop();                                        
+                    elapsed   = 0f;
+                    deltaTime = 0f;
+                }
+                break;
+                case ProcessState.Run: {                    
+                    context = p_context;
+                    if (!enabled)  break;
+                    if (!m_active) break;
+                    //Update Clocks
+                    InternalTiming(ctx,s);
+                    //Execute logic
+                    OnExecute(ctx); 
+                }
+                break;                
             }
         }
-
-        /// <summary>
-        /// Reference to the job
-        /// </summary>
-        public T job;
-
-        /// <summary>
-        /// Job handle is any.
-        /// </summary>
-        public JobHandle handle;
+        virtual protected void InternalStop() {            
+            if (process != null) process.Dispose();            
+        }
         
-        /// <summary>
-        /// Flag that tells if the job handle is valid.
-        /// </summary>
-        public bool scheduled { get { return m_is_scheduled; } }
-        internal bool m_is_scheduled;
-
-        /// <summary>
-        /// Helper to use with unity jobs
-        /// </summary>                
-        internal bool m_has_job;
-        internal bool m_has_job_parallel;
-        //internal int  m_job_frame_limit;
-        
-        /// <summary>
-        /// Set the desired loop execution parameters of the parallel job. If both params are 0 the job will execute as a regular IJob
-        /// </summary>
-        /// <param name="p_length"></param>
-        /// <param name="p_steps"></param>
-        public void SetJobForLoop(int p_length=0,int p_steps=0) {
-            m_job_parallel_length = p_length;
-            m_job_parallel_step   = p_steps;
-        }
-        internal int             m_job_parallel_length;
-        internal int             m_job_parallel_step;
-
-        /// <summary>
-        /// Handles when the job leaves the execution pool.
-        /// </summary>
-        internal override void OnManagerRemoveInternal() {
-            switch(state) {
-                //No need to run because 'complete' already did it
-                case ActivityState.Complete: break;
-                default: {
-                    //Ensure completion and clears handle
-                    if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
-                    //Calls the job component complete callback
-                    if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnDestroy(); job = (T)itf; }
-                }
-                break;
-            }
-            //Execute the rest of the stopping and signal extension's 'OnStop'
-            base.OnManagerRemoveInternal();
-        }
-
-        /// <summary>
-        /// Overrides to handle unity's job execution
-        /// </summary>
-        /// <returns></returns>
-        internal override bool OnExecuteInternal() {
-            //If no job instance return 'complete'
-            if(!m_has_job) return false;
-            //Invalid contexts return 'complete'
-            if(context != ActivityContext.Job) 
-            if(context != ActivityContext.JobAsync) return false;
-            //If type is parallel and length/steps are set
-            bool is_parallel = m_has_job_parallel ? (m_job_parallel_length>=0 && m_job_parallel_step>=0) : false;                                    
-            //Init the local variables
-            //If parallel use IJobParallelFor extensions otherwise IJobExtensions
-            //Job      == Run
-            //JobAsync == Schedule
-            object[]   job_fn_args = null;
-            MethodInfo job_fn      = null;
-            switch(context) {                    
-                case ActivityContext.Job:           { job_fn = is_parallel ? m_jbpf_run      : m_jb_run;       job_fn_args = is_parallel ? m_args2 : m_args1; } break; 
-                case ActivityContext.JobAsync:      { job_fn = is_parallel ? m_jbpf_schedule : m_jb_schedule;  job_fn_args = is_parallel ? m_args4 : m_args2; } break;
-            }            
-            //If invalids return 'completed'
-            if(job_fn_args == null) return false;
-            if(job_fn      == null) return false;
-            //Flag that tells Run/Schedule should be called.
-            bool will_invoke = false;
-            //Prepare arguments for Run/Schedule based on context
-            switch(context) {
-                //IJobParallelForExtensions.Run(job,length)
-                //IJobExtensions.Run(job)
-                case ActivityContext.Job: {                    
-                    //Assign parameters
-                    if(is_parallel) {
-                        job_fn_args[1] = m_job_parallel_length;
-                    }                    
-                    //Reinforce not-scheduled
-                    m_is_scheduled = false; 
-                    //Flag to invoke
-                    will_invoke = true;
-                }
-                break;
-                //IJobParallelForExtensions.Schedule(job,length,steps,depend_handle)                    
-                //IJobExtensions.Schedule(job,depend_handle)
-                case ActivityContext.JobAsync: {
-                    //If something is scheduled already, skip
-                    if(m_is_scheduled) break; 
-                    //Assign parameters
-                    if(is_parallel) {
-                        job_fn_args[1] = m_job_parallel_length;
-                        job_fn_args[2] = m_job_parallel_step; 
-                        job_fn_args[3] = default(JobHandle);
-                    }
-                    else {
-                        job_fn_args[1] = default(JobHandle);
-                    }
-                    //Flag to invoke
-                    will_invoke = true;
-                }
-                break;
-            }
-            //If invoke is needed, update the job and invoke the method
-            if(will_invoke) {
-                if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnInit(); job = (T)itf; }
-                //Set the most up-to-date struct
-                job_fn_args[0] = job;
-                //Invoke the method
-                object invoke_res = job_fn.Invoke(null,job_fn_args);
-                //If async mark scheduled as true and store the handle
-                if(context == ActivityContext.JobAsync) {
-                    m_is_scheduled = true;
-                    handle = (JobHandle)invoke_res;
-                }                
-            }
-            //If has handle use 'IsCompleted' otherwise its sync run and should be finished now
-            bool is_completed = m_is_scheduled ? handle.IsCompleted : true;            
-            /*
-            //Decreases the frame counter to prevent temp_alloc warnings
-            if(m_has_job_handle) {
-                m_job_frame_limit--;
-                is_completed = m_job_frame_limit<=4 ? true : is_completed;
-            }
-            //*/
-            //Continue if not completed
-            if(!is_completed) return true;
-            //Ensure completion and clears handle
-            if(m_is_scheduled) { handle.Complete(); m_is_scheduled=false; }
-            //Calls the job component complete callback
-            if(job is IJobComponent) { IJobComponent itf = (IJobComponent)job; itf.OnComplete(); job = (T)itf; }
-            //Return 'completed'
-            return false;
-        }
+        #endregion
 
     }
-
     #endregion
 
 }

@@ -154,7 +154,7 @@ namespace UnityExt.Core {
         /// <param name="p_steps">Number of traversal steps per frame to perform.</param>
         /// <param name="p_callback">Callback called on each iteration.</param>
         /// <returns>Running Activity doing the search</returns>
-        static public Activity TraverseAsync(this Transform p_target,int p_steps,bool p_dfs,Delegate p_callback) {
+        static public Process TraverseAsync(this Transform p_target,int p_steps,bool p_dfs,Delegate p_callback) {
             //Traversal data structures
             Stack<Transform> s = p_dfs ? new Stack<Transform>() : null;
             Queue<Transform> q = p_dfs ? null                   : new Queue<Transform>();
@@ -166,9 +166,9 @@ namespace UnityExt.Core {
             //Run at least one step
             int stp = p_steps<=0 ? 1 : p_steps;
             //Iterate the hierarchy traversal 'step' items per frame to offload the navigation in more frames and ease the overhead
-            Activity search_loop = 
-            Activity.Run(
-            delegate(Activity p_a) { 
+            Process search_loop = 
+            Process.Start(
+            delegate(ProcessContext ctx,Process p) { 
                 for(int i=0;i<stp;i++) {
                     int hc = p_dfs ? s.Count : q.Count;
                     if(hc<=0) return false;
@@ -189,7 +189,7 @@ namespace UnityExt.Core {
                 }
                 return true;
             });
-            search_loop.id = "Transform.Traverse";
+            search_loop.name = "Transform.Traverse";
             //Returns the running activity instance
             return search_loop;
         }
@@ -201,7 +201,7 @@ namespace UnityExt.Core {
         /// <param name="p_steps">Number of traversal steps per frame to perform.</param>
         /// <param name="p_callback">Callback called on each iteration.</param>
         /// <returns>Running Activity doing the search</returns>
-        static public Activity TraverseAsync(this Transform p_target,int p_steps,Delegate p_callback) { return TraverseAsync(p_target,p_steps,true,p_callback); }
+        static public Process TraverseAsync(this Transform p_target,int p_steps,Delegate p_callback) { return TraverseAsync(p_target,p_steps,true,p_callback); }
 
         /// <summary>
         /// Traverses the hierarchy of a transform calling the callback per child found. It will run the desired number of steps per frame.
@@ -209,7 +209,7 @@ namespace UnityExt.Core {
         /// <param name="p_target">Transform to navigate</param>                
         /// <param name="p_callback">Callback called on each iteration.</param>
         /// <returns>Running Activity doing the search</returns>
-        static public Activity TraverseAsync(this Transform p_target,Delegate p_callback) { return TraverseAsync(p_target,1,true,p_callback); }
+        static public Process TraverseAsync(this Transform p_target,Delegate p_callback) { return TraverseAsync(p_target,1,true,p_callback); }
         #endregion
 
         #region TraverseReverse
@@ -243,7 +243,7 @@ namespace UnityExt.Core {
         /// <param name="p_steps">Number of traversal steps per frame to perform.</param>
         /// <param name="p_callback">Callback called on each iteration.</param>
         /// <returns>Running Activity doing the search</returns>
-        static public Activity TraverseReverseAsync(this Transform p_target,int p_steps,Delegate p_callback) {
+        static public Process TraverseReverseAsync(this Transform p_target,int p_steps,Delegate p_callback) {
             //Traversal data structures
             Transform it = p_target;            
             //Callback casts
@@ -252,9 +252,9 @@ namespace UnityExt.Core {
             //Run at least one step
             int stp = p_steps<=0 ? 1 : p_steps;
             //Iterate the hierarchy traversal 'step' items per frame to offload the navigation in more frames and ease the overhead
-            Activity search_loop = 
-            Activity.Run(
-            delegate(Activity p_a) { 
+            Process search_loop = 
+            Process.Start(
+            delegate(ProcessContext ctx,Process p) { 
                 for(int i=0;i<stp;i++) {
                     //Exit if null
                     if(!it) return false;
@@ -267,7 +267,7 @@ namespace UnityExt.Core {
                 }
                 return true;
             });
-            search_loop.id = "Transform.TraverseReverse";
+            search_loop.name = "Transform.TraverseReverse";
             //Returns the running activity instance
             return search_loop;
         }
@@ -278,7 +278,7 @@ namespace UnityExt.Core {
         /// <param name="p_target">Transform to navigate reverse</param>
         /// <param name="p_callback">Callback called on each iteration.</param>
         /// <returns>Running Activity doing the search</returns>
-        static public Activity TraverseReverseAsync(this Transform p_target,Delegate p_callback) { return TraverseReverseAsync(p_target,1,p_callback); }
+        static public Process TraverseReverseAsync(this Transform p_target,Delegate p_callback) { return TraverseReverseAsync(p_target,1,p_callback); }
 
         #endregion
 
@@ -432,7 +432,7 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_target">GameObject to sequentially destroy</param>
         /// <param name="p_steps">How many destructions per frame.</param>
-        static public Activity DestroyAsync(this GameObject p_target,int p_steps) {            
+        static public Process DestroyAsync(this GameObject p_target,int p_steps) {            
             Transform t = p_target ? p_target.transform : null;
             if(!t) return null;            
             //Traverse the whole hierarchy and create the "garbage collection"
@@ -442,8 +442,8 @@ namespace UnityExt.Core {
             int k   = 0;
             int c   = gc.Count;
             int stp = p_steps<=0 ? c : p_steps;
-            Activity destroy_loop = 
-            Activity.Run(delegate(Activity p_a) { 
+            Process destroy_loop = 
+            Process.Start(delegate(ProcessContext ctx, Process pp) { 
                 for(int i=0;i<stp;i++) {
                     if(k>=c) return false;
                     //Reverse iterate the gc list to destroy leaf->root
@@ -454,7 +454,7 @@ namespace UnityExt.Core {
                 //Keep iterating
                 return true;
             });
-            destroy_loop.id = "GameObject.DestroyAsync";
+            destroy_loop.name = "GameObject.DestroyAsync";
             //Returns the running destruction loop
             return destroy_loop;
         }

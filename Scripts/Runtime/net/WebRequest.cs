@@ -21,11 +21,14 @@ namespace UnityExt.Core {
         Idle=0,
         Start,
         Create,
-        Cached,        
+        CacheSearch,
+        CacheSuccess,        
         UploadStart,
-        UploadProgress,
+        Upload,
+        UploadProgress,        
         UploadComplete,
         DownloadStart,
+        Download,
         DownloadProgress,
         DownloadComplete,
         Success,
@@ -40,7 +43,7 @@ namespace UnityExt.Core {
     /// Enumeration that define bit flags to configure the web request behavior.
     /// </summary>
     [Flags]
-    public enum WebRequestAttrib : byte {
+    public enum WebRequestFlags : byte {
         /// <summary>
         /// No Flags
         /// </summary>
@@ -88,14 +91,48 @@ namespace UnityExt.Core {
     /// <summary>
     /// Class that wraps Unity's web request functionality for improved memory management and performance.
     /// </summary>
-    public class WebRequest : Activity {
+    public class WebRequest : Activity<WebRequestState> {
 
         #region static 
 
         /// <summary>
         /// CTOR.
         /// </summary>
-        static WebRequest() {            
+        static WebRequest() {
+            DirectoryInfo di;
+            //Assert the DataPath folder (stores temp files and caching)
+            DataPath = $"{m_app_persistent_dp}/unityex/{m_app_platform}/web/";
+            di = new DirectoryInfo(DataPath);
+            if (!di.Exists) di.Create();
+            //Assert the temp files (used for inbetween web operations)
+            TempPath = $"{DataPath}temp/";
+            di = new DirectoryInfo(TempPath);
+            //Assert the cache folder when storing in disk
+            if (!di.Exists) di.Create();
+            CachePath = $"{DataPath}cache/";
+            di = new DirectoryInfo(CachePath);
+            if (!di.Exists) di.Create();
+            //Assert if FileSystem can be used
+            #if UNITY_WEBGL
+            CanUseFileSystem = true;
+            #else                            
+            CanUseFileSystem = true;
+            try {
+                //Force an exception to confirm the filesystem can be used
+                System.Security.AccessControl.DirectorySecurity ds = Directory.GetAccessControl(DataPath);
+            }
+            catch (UnauthorizedAccessException) {
+                CanUseFileSystem = false;
+            }            
+            #endif
+            StringBuilder log = new StringBuilder();
+            log.AppendLine($"=== Web Request ===");
+            log.AppendLine($"Data:   {DataPath}");
+            log.AppendLine($"Temp:   {TempPath}");
+            log.AppendLine($"Cache:  {CachePath}");
+            log.AppendLine($"Use FS: {CanUseFileSystem}");
+            log.AppendLine($"===================");
+            Debug.Log(log.ToString());
         }
         
         #region Consts
@@ -103,17 +140,17 @@ namespace UnityExt.Core {
         /// <summary>
         /// Default option for buffering mode.
         /// </summary>
-        static public WebRequestAttrib DefaultBufferMode = WebRequestAttrib.FileBuffer;
+        static public WebRequestFlags DefaultBufferMode = WebRequestFlags.FileBuffer;
         
         /// <summary>
         /// Default option for caching mode.
         /// </summary>
-        static public WebRequestAttrib DefaultCacheMode  = WebRequestAttrib.FileCache;
+        static public WebRequestFlags DefaultCacheMode  = WebRequestFlags.FileCache;
 
         /// <summary>
         /// Flag telling in which execution context the data must be processed.
         /// </summary>
-        static public ActivityContext DataProcessContext = ActivityContext.Thread;
+        static public ProcessContext DataProcessContext = ProcessContext.Thread;
 
         /// <summary>
         /// Default Cache TTL in Minutes
@@ -129,36 +166,22 @@ namespace UnityExt.Core {
         /// <summary>
         /// Returns the folder to write temprary form data.
         /// </summary>
-        static public string DataPath {
-            get {                
-                string path = $"{m_app_persistent_dp}/unityex/{m_app_platform}/web/";
-                path.Replace('\\','/').Replace("//","/");
-                if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-                return path;
-            }
-        }
-
+        static public string DataPath { get; private set; } 
+        
         /// <summary>
         /// Returns the folder to write temprary form data.
         /// </summary>
-        static public string TempPath {
-            get {                
-                string path = $"{DataPath}temp/";
-                if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-                return path;
-            }
-        }
+        static public string TempPath { get; private set; }
 
         /// <summary>
         /// Returns the folder to write cached results
         /// </summary>
-        static public string CachePath {
-            get {                
-                string path = $"{DataPath}cache/"; 
-                if(!Directory.Exists(path)) Directory.CreateDirectory(path);
-                return path;
-            }
-        }
+        static public string CachePath { get; private set; }
+
+        /// <summary>
+        /// Flag that tells the machine's filesystem can be used.
+        /// </summary>
+        static public bool CanUseFileSystem { get; private set; }
 
         /// <summary>
         /// Helper to return a temp file name in the proper path
@@ -179,31 +202,7 @@ namespace UnityExt.Core {
         }
         static private System.Random m_rnd;
         static private string m_hash_lut = $"0123456789abcdef";
-
-        /// <summary>
-        /// Flag that tells the machine's filesystem can be used.
-        /// </summary>
-        static public bool CanUseFileSystem {
-            get {
-                #if UNITY_WEBGL
-                return true;
-                #endif
-                #if !UNITY_WEBGL
-                if(m_can_use_fs!=null) return (bool)m_can_use_fs;
-                m_can_use_fs = true;
-                try {
-                    //Force an exception to confirm the filesystem can be used
-                    System.Security.AccessControl.DirectorySecurity ds = Directory.GetAccessControl(DataPath);
-                }
-                catch (UnauthorizedAccessException) {
-                    m_can_use_fs=false;
-                }
-                return (bool)m_can_use_fs;
-                #endif
-            }
-        }
-        static private object m_can_use_fs;
-
+            
         /// <summary>
         /// Auxiliary method to give control when to trigger the file system cleanup and initialization.
         /// </summary>
@@ -232,25 +231,25 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_method">Http Method</param>
         /// <param name="p_url">Request URL</param>
-        /// <param name="p_attribs">Request attribute flags</param>
+        /// <param name="p_flags">Request attribute flags</param>
         /// <param name="p_query">URL query string</param>
         /// <param name="p_request">Request data</param>
         /// <param name="p_callback">Request events handler</param>
         /// <returns>Running web request</returns>
-        static public WebRequest Send(string p_method,string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback=null) {
+        static public WebRequest Send(string p_method,string p_url,WebRequestFlags p_flags,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback=null) {
             WebRequest req = new WebRequest();
             if(p_query  !=null) req.query   = p_query;
             if(p_request!=null) req.request = p_request;
             req.OnRequestEvent = p_callback;
-            req.Send(p_method,p_url,p_attribs);
+            req.Send(p_method,p_url,p_flags);
             return req;
         }
-        static public WebRequest Send(string p_method,string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(p_method,p_url,p_attribs,p_query,null     ,p_callback); }
-        static public WebRequest Send(string p_method,string p_url,WebRequestAttrib p_attribs,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(p_method,p_url,p_attribs,null   ,p_request,p_callback); }
-        static public WebRequest Send(string p_method,string p_url,WebRequestAttrib p_attribs,                                        Action<WebRequest> p_callback = null) { return Send(p_method,p_url,p_attribs,null   ,null     ,p_callback); }
-        static public WebRequest Send(string p_method,string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(p_method,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,p_request,p_callback); }
-        static public WebRequest Send(string p_method,string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(p_method,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,null     ,p_callback); }
-        static public WebRequest Send(string p_method,string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(p_method,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,null   ,null     ,p_callback); }
+        static public WebRequest Send(string p_method,string p_url,WebRequestFlags p_flags,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(p_method,p_url,p_flags,p_query,null     ,p_callback); }
+        static public WebRequest Send(string p_method,string p_url,WebRequestFlags p_flags,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(p_method,p_url,p_flags,null   ,p_request,p_callback); }
+        static public WebRequest Send(string p_method,string p_url,WebRequestFlags p_flags,                                        Action<WebRequest> p_callback = null) { return Send(p_method,p_url,p_flags,null   ,null     ,p_callback); }
+        static public WebRequest Send(string p_method,string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(p_method,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,p_request,p_callback); }
+        static public WebRequest Send(string p_method,string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(p_method,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,null     ,p_callback); }
+        static public WebRequest Send(string p_method,string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(p_method,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,null   ,null     ,p_callback); }
         #endregion
 
         #region Get
@@ -258,18 +257,18 @@ namespace UnityExt.Core {
         /// Creates and run a GET request with the informed arguments.
         /// </summary>        
         /// <param name="p_url">Request URL</param>
-        /// <param name="p_attribs">Request attribute flags</param>
+        /// <param name="p_flags">Request attribute flags</param>
         /// <param name="p_query">URL query string</param>
         /// <param name="p_request">Request data (headers only)</param>
         /// <param name="p_callback">Request events handler</param>
         /// <returns>Running web request</returns>
-        static public WebRequest Get(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_attribs,p_query,p_request,p_callback); }
-        static public WebRequest Get(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_attribs,p_query,null     ,p_callback); }
-        static public WebRequest Get(string p_url,WebRequestAttrib p_attribs,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_attribs,null   ,p_request,p_callback); }
-        static public WebRequest Get(string p_url,WebRequestAttrib p_attribs,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_attribs,null   ,null     ,p_callback); }
-        static public WebRequest Get(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,p_request,p_callback); }
-        static public WebRequest Get(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,null     ,p_callback); }
-        static public WebRequest Get(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,null   ,null     ,p_callback); }
+        static public WebRequest Get(string p_url,WebRequestFlags p_flags,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_flags,p_query,p_request,p_callback); }
+        static public WebRequest Get(string p_url,WebRequestFlags p_flags,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_flags,p_query,null     ,p_callback); }
+        static public WebRequest Get(string p_url,WebRequestFlags p_flags,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_flags,null   ,p_request,p_callback); }
+        static public WebRequest Get(string p_url,WebRequestFlags p_flags,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,p_flags,null   ,null     ,p_callback); }
+        static public WebRequest Get(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,p_request,p_callback); }
+        static public WebRequest Get(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,null     ,p_callback); }
+        static public WebRequest Get(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Get,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,null   ,null     ,p_callback); }
         #endregion
 
         #region Post
@@ -277,18 +276,18 @@ namespace UnityExt.Core {
         /// Creates and run a POST request with the informed arguments.
         /// </summary>        
         /// <param name="p_url">Request URL</param>
-        /// <param name="p_attribs">Request attribute flags</param>
+        /// <param name="p_flags">Request attribute flags</param>
         /// <param name="p_query">URL query string</param>
         /// <param name="p_request">Request data (headers only)</param>
         /// <param name="p_callback">Request events handler</param>
         /// <returns>Running web request</returns>
-        static public WebRequest Post(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_attribs,p_query,p_request,p_callback); }
-        static public WebRequest Post(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_attribs,p_query,null     ,p_callback); }
-        static public WebRequest Post(string p_url,WebRequestAttrib p_attribs,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_attribs,null   ,p_request,p_callback); }
-        static public WebRequest Post(string p_url,WebRequestAttrib p_attribs,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_attribs,null   ,null     ,p_callback); }
-        static public WebRequest Post(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,p_request,p_callback); }
-        static public WebRequest Post(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,null     ,p_callback); }
-        static public WebRequest Post(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,null   ,null     ,p_callback); }
+        static public WebRequest Post(string p_url,WebRequestFlags p_flags,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_flags,p_query,p_request,p_callback); }
+        static public WebRequest Post(string p_url,WebRequestFlags p_flags,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_flags,p_query,null     ,p_callback); }
+        static public WebRequest Post(string p_url,WebRequestFlags p_flags,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_flags,null   ,p_request,p_callback); }
+        static public WebRequest Post(string p_url,WebRequestFlags p_flags,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,p_flags,null   ,null     ,p_callback); }
+        static public WebRequest Post(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,p_request,p_callback); }
+        static public WebRequest Post(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,null     ,p_callback); }
+        static public WebRequest Post(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Post,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,null   ,null     ,p_callback); }
         #endregion
 
         #region Put
@@ -296,18 +295,18 @@ namespace UnityExt.Core {
         /// Creates and run a PUT request with the informed arguments.
         /// </summary>        
         /// <param name="p_url">Request URL</param>
-        /// <param name="p_attribs">Request attribute flags</param>
+        /// <param name="p_flags">Request attribute flags</param>
         /// <param name="p_query">URL query string</param>
         /// <param name="p_request">Request data (headers only)</param>
         /// <param name="p_callback">Request events handler</param>
         /// <returns>Running web request</returns>
-        static public WebRequest Put(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_attribs,p_query,p_request,p_callback); }
-        static public WebRequest Put(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_attribs,p_query,null     ,p_callback); }
-        static public WebRequest Put(string p_url,WebRequestAttrib p_attribs,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_attribs,null   ,p_request,p_callback); }
-        static public WebRequest Put(string p_url,WebRequestAttrib p_attribs,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_attribs,null   ,null     ,p_callback); }
-        static public WebRequest Put(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,p_request,p_callback); }
-        static public WebRequest Put(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,null     ,p_callback); }
-        static public WebRequest Put(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,null   ,null     ,p_callback); }
+        static public WebRequest Put(string p_url,WebRequestFlags p_flags,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_flags,p_query,p_request,p_callback); }
+        static public WebRequest Put(string p_url,WebRequestFlags p_flags,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_flags,p_query,null     ,p_callback); }
+        static public WebRequest Put(string p_url,WebRequestFlags p_flags,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_flags,null   ,p_request,p_callback); }
+        static public WebRequest Put(string p_url,WebRequestFlags p_flags,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,p_flags,null   ,null     ,p_callback); }
+        static public WebRequest Put(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,p_request,p_callback); }
+        static public WebRequest Put(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,null     ,p_callback); }
+        static public WebRequest Put(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Put,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,null   ,null     ,p_callback); }
         #endregion
 
         #region Delete
@@ -315,18 +314,18 @@ namespace UnityExt.Core {
         /// Creates and run a DELETE request with the informed arguments.
         /// </summary>        
         /// <param name="p_url">Request URL</param>
-        /// <param name="p_attribs">Request attribute flags</param>
+        /// <param name="p_flags">Request attribute flags</param>
         /// <param name="p_query">URL query string</param>
         /// <param name="p_request">Request data (headers only)</param>
         /// <param name="p_callback">Request events handler</param>
         /// <returns>Running web request</returns>
-        static public WebRequest Delete(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_attribs,p_query,p_request,p_callback); }
-        static public WebRequest Delete(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_attribs,p_query,null     ,p_callback); }
-        static public WebRequest Delete(string p_url,WebRequestAttrib p_attribs,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_attribs,null   ,p_request,p_callback); }
-        static public WebRequest Delete(string p_url,WebRequestAttrib p_attribs,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_attribs,null   ,null     ,p_callback); }
-        static public WebRequest Delete(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,p_request,p_callback); }
-        static public WebRequest Delete(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,null     ,p_callback); }
-        static public WebRequest Delete(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,null   ,null     ,p_callback); }
+        static public WebRequest Delete(string p_url,WebRequestFlags p_flags,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_flags,p_query,p_request,p_callback); }
+        static public WebRequest Delete(string p_url,WebRequestFlags p_flags,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_flags,p_query,null     ,p_callback); }
+        static public WebRequest Delete(string p_url,WebRequestFlags p_flags,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_flags,null   ,p_request,p_callback); }
+        static public WebRequest Delete(string p_url,WebRequestFlags p_flags,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,p_flags,null   ,null     ,p_callback); }
+        static public WebRequest Delete(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,p_request,p_callback); }
+        static public WebRequest Delete(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,null     ,p_callback); }
+        static public WebRequest Delete(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Delete,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,null   ,null     ,p_callback); }
         #endregion
 
         #region Head
@@ -334,18 +333,18 @@ namespace UnityExt.Core {
         /// Creates and run a HEAD request with the informed arguments.
         /// </summary>        
         /// <param name="p_url">Request URL</param>
-        /// <param name="p_attribs">Request attribute flags</param>
+        /// <param name="p_flags">Request attribute flags</param>
         /// <param name="p_query">URL query string</param>
         /// <param name="p_request">Request data (headers only)</param>
         /// <param name="p_callback">Request events handler</param>
         /// <returns>Running web request</returns>
-        static public WebRequest Head(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_attribs,p_query,p_request,p_callback); }
-        static public WebRequest Head(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_attribs,p_query,null     ,p_callback); }
-        static public WebRequest Head(string p_url,WebRequestAttrib p_attribs,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_attribs,null   ,p_request,p_callback); }
-        static public WebRequest Head(string p_url,WebRequestAttrib p_attribs,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_attribs,null   ,null     ,p_callback); }
-        static public WebRequest Head(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,p_request,p_callback); }
-        static public WebRequest Head(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,null     ,p_callback); }
-        static public WebRequest Head(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,null   ,null     ,p_callback); }
+        static public WebRequest Head(string p_url,WebRequestFlags p_flags,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_flags,p_query,p_request,p_callback); }
+        static public WebRequest Head(string p_url,WebRequestFlags p_flags,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_flags,p_query,null     ,p_callback); }
+        static public WebRequest Head(string p_url,WebRequestFlags p_flags,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_flags,null   ,p_request,p_callback); }
+        static public WebRequest Head(string p_url,WebRequestFlags p_flags,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,p_flags,null   ,null     ,p_callback); }
+        static public WebRequest Head(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,p_request,p_callback); }
+        static public WebRequest Head(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,null     ,p_callback); }
+        static public WebRequest Head(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Head,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,null   ,null     ,p_callback); }
         #endregion
 
         #region Create
@@ -353,18 +352,18 @@ namespace UnityExt.Core {
         /// Creates and run a CREATE request with the informed arguments.
         /// </summary>        
         /// <param name="p_url">Request URL</param>
-        /// <param name="p_attribs">Request attribute flags</param>
+        /// <param name="p_flags">Request attribute flags</param>
         /// <param name="p_query">URL query string</param>
         /// <param name="p_request">Request data (headers only)</param>
         /// <param name="p_callback">Request events handler</param>
         /// <returns>Running web request</returns>
-        static public WebRequest Create(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_attribs,p_query,p_request,p_callback); }
-        static public WebRequest Create(string p_url,WebRequestAttrib p_attribs,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_attribs,p_query,null     ,p_callback); }
-        static public WebRequest Create(string p_url,WebRequestAttrib p_attribs,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_attribs,null   ,p_request,p_callback); }
-        static public WebRequest Create(string p_url,WebRequestAttrib p_attribs,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_attribs,null   ,null     ,p_callback); }
-        static public WebRequest Create(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,p_request,p_callback); }
-        static public WebRequest Create(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,p_query,null     ,p_callback); }
-        static public WebRequest Create(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache,null   ,null     ,p_callback); }
+        static public WebRequest Create(string p_url,WebRequestFlags p_flags,HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_flags,p_query,p_request,p_callback); }
+        static public WebRequest Create(string p_url,WebRequestFlags p_flags,HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_flags,p_query,null     ,p_callback); }
+        static public WebRequest Create(string p_url,WebRequestFlags p_flags,                  HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_flags,null   ,p_request,p_callback); }
+        static public WebRequest Create(string p_url,WebRequestFlags p_flags,                                        Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,p_flags,null   ,null     ,p_callback); }
+        static public WebRequest Create(string p_url,                           HttpQuery p_query,HttpRequest p_request,Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,p_request,p_callback); }
+        static public WebRequest Create(string p_url,                           HttpQuery p_query,                      Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,p_query,null     ,p_callback); }
+        static public WebRequest Create(string p_url,                                                                   Action<WebRequest> p_callback = null) { return Send(HttpMethod.Create,p_url,WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache,null   ,null     ,p_callback); }
         #endregion
 
         #endregion
@@ -479,30 +478,30 @@ namespace UnityExt.Core {
         /// <summary>
         /// Set of modifier attribs of this web request.
         /// </summary>
-        public WebRequestAttrib attribs { get;  private set; }
-        private WebRequestAttrib m_attrib_filtered;
+        public WebRequestFlags attribs { get;  private set; }
+        private WebRequestFlags m_attrib_filtered;
         
         /// <summary>
         /// Helper to fetch the constrained request attribs, based on FS available and global flags
         /// </summary>        
-        private WebRequestAttrib GetAttribs() {
-            WebRequestAttrib a = attribs;            
+        private WebRequestFlags GetAttribs() {
+            WebRequestFlags a = attribs;            
             //If default modes use the global attribs
-            if((a & WebRequestAttrib.DefaultBuffer) != 0) a = (a & ~WebRequestAttrib.BufferMask) | DefaultBufferMode;
-            if((a & WebRequestAttrib.DefaultCache ) != 0) a = (a & ~WebRequestAttrib.CacheMask)  | DefaultCacheMode ;
+            if((a & WebRequestFlags.DefaultBuffer) != 0) a = (a & ~WebRequestFlags.BufferMask) | DefaultBufferMode;
+            if((a & WebRequestFlags.DefaultCache ) != 0) a = (a & ~WebRequestFlags.CacheMask)  | DefaultCacheMode ;
             if(CanUseFileSystem) return a;            
             //If no FS force memory buffering
-            a  = (a & ~WebRequestAttrib.BufferMask) | WebRequestAttrib.MemoryBuffer;
+            a  = (a & ~WebRequestFlags.BufferMask) | WebRequestFlags.MemoryBuffer;
             //If no FS force memory based cache or keep no-cache if set
-            bool is_no_cache = (a & WebRequestAttrib.NoCache)!=0;
-            a &= (a & ~WebRequestAttrib.CacheMask) | (is_no_cache ? WebRequestAttrib.NoCache : WebRequestAttrib.MemoryCache );            
+            bool is_no_cache = (a & WebRequestFlags.NoCache)!=0;
+            a &= (a & ~WebRequestFlags.CacheMask) | (is_no_cache ? WebRequestFlags.NoCache : WebRequestFlags.MemoryCache );            
             return a;
         }
 
         /// <summary>
         /// Helper to check if an attrib is set
         /// </summary>        
-        private bool IsAttrib(WebRequestAttrib p_flag) { return (m_attrib_filtered & p_flag)!=0; }
+        private bool IsAttrib(WebRequestFlags p_flag) { return (m_attrib_filtered & p_flag)!=0; }
         #endregion
 
         /// <summary>
@@ -525,7 +524,7 @@ namespace UnityExt.Core {
             m_internal_state = State.Idle;
             method  = HttpMethod.None;            
             state   = WebRequestState.Idle;
-            attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache;            
+            attribs = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache;            
             query   = new HttpQuery();
             request = new HttpRequest();
             //If cache isn't initialized yet, do in the first run
@@ -539,16 +538,16 @@ namespace UnityExt.Core {
         /// </summary>
         /// <param name="p_method">Http Request Method</param>
         /// <param name="p_url">Base URL of the request</param>
-        /// /// <param name="p_attribs">Request Configuration attributes</param>
+        /// /// <param name="p_flags">Request Configuration attributes</param>
         /// <returns>Running Web Request</returns>
-        public WebRequest Send(string p_method,string p_url,WebRequestAttrib p_attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache) {
+        public WebRequest Send(string p_method,string p_url,WebRequestFlags p_flags = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache) {
             if(active) { Debug.LogWarning($"WebRequest> Already Running."); return this; }
             id        = $"web-{p_method.ToLower()}-{GetHashCode().ToString("x")}";
             method    = p_method;
             url       = p_url;
             m_internal_url     = GetURL(false);                        
             m_internal_state   = State.CacheRead;
-            attribs   = p_attribs;
+            attribs   = p_flags;
             m_attrib_filtered = GetAttribs();            
             code      = (HttpStatusCode)0; //invalid
             progress  = 0f;
@@ -563,49 +562,49 @@ namespace UnityExt.Core {
         /// Starts a GET process of this web request with the informed and URL.
         /// </summary>        
         /// <param name="p_url">Base URL of the request</param>
-        /// /// <param name="p_attribs">Request Configuration attributes</param>
+        /// /// <param name="p_flags">Request Configuration attributes</param>
         /// <returns>Running Web Request</returns>
-        public WebRequest Get(string p_url,WebRequestAttrib p_attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache) { return Send(HttpMethod.Get,p_url,p_attribs); }
+        public WebRequest Get(string p_url,WebRequestFlags p_flags = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache) { return Send(HttpMethod.Get,p_url,p_flags); }
 
         /// <summary>
         /// Starts a POST process of this web request with the informed and URL.
         /// </summary>        
         /// <param name="p_url">Base URL of the request</param>
-        /// /// <param name="p_attribs">Request Configuration attributes</param>
+        /// /// <param name="p_flags">Request Configuration attributes</param>
         /// <returns>Running Web Request</returns>
-        public WebRequest Post(string p_url,WebRequestAttrib p_attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache) { return Send(HttpMethod.Post,p_url,p_attribs); }
+        public WebRequest Post(string p_url,WebRequestFlags p_flags = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache) { return Send(HttpMethod.Post,p_url,p_flags); }
 
         /// <summary>
         /// Starts a PUT process of this web request with the informed and URL.
         /// </summary>        
         /// <param name="p_url">Base URL of the request</param>
-        /// /// <param name="p_attribs">Request Configuration attributes</param>
+        /// /// <param name="p_flags">Request Configuration attributes</param>
         /// <returns>Running Web Request</returns>
-        public WebRequest Put(string p_url,WebRequestAttrib p_attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache) { return Send(HttpMethod.Put,p_url,p_attribs); }
+        public WebRequest Put(string p_url,WebRequestFlags p_flags = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache) { return Send(HttpMethod.Put,p_url,p_flags); }
 
         /// <summary>
         /// Starts a DELETE process of this web request with the informed and URL.
         /// </summary>        
         /// <param name="p_url">Base URL of the request</param>
-        /// /// <param name="p_attribs">Request Configuration attributes</param>
+        /// /// <param name="p_flags">Request Configuration attributes</param>
         /// <returns>Running Web Request</returns>
-        public WebRequest Delete(string p_url,WebRequestAttrib p_attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache) { return Send(HttpMethod.Delete,p_url,p_attribs); }
+        public WebRequest Delete(string p_url,WebRequestFlags p_flags = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache) { return Send(HttpMethod.Delete,p_url,p_flags); }
 
         /// <summary>
         /// Starts a HEAD process of this web request with the informed and URL.
         /// </summary>        
         /// <param name="p_url">Base URL of the request</param>
-        /// /// <param name="p_attribs">Request Configuration attributes</param>
+        /// /// <param name="p_flags">Request Configuration attributes</param>
         /// <returns>Running Web Request</returns>
-        public WebRequest Head(string p_url,WebRequestAttrib p_attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache) { return Send(HttpMethod.Head,p_url,p_attribs); }
+        public WebRequest Head(string p_url,WebRequestFlags p_flags = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache) { return Send(HttpMethod.Head,p_url,p_flags); }
 
         /// <summary>
         /// Starts a CREATE process of this web request with the informed and URL.
         /// </summary>        
         /// <param name="p_url">Base URL of the request</param>
-        /// /// <param name="p_attribs">Request Configuration attributes</param>
+        /// /// <param name="p_flags">Request Configuration attributes</param>
         /// <returns>Running Web Request</returns>
-        public WebRequest Create(string p_url,WebRequestAttrib p_attribs = WebRequestAttrib.DefaultBuffer | WebRequestAttrib.DefaultCache) { return Send(HttpMethod.Create,p_url,p_attribs); }
+        public WebRequest Create(string p_url,WebRequestFlags p_flags = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache) { return Send(HttpMethod.Create,p_url,p_flags); }
 
         #endregion
 
@@ -642,7 +641,7 @@ namespace UnityExt.Core {
             if(request  != null) { request.Dispose();  }
             if(response != null) { response.Dispose(); }            
             if(query!=null) query.Clear();
-            m_attrib_filtered = WebRequestAttrib.None;            
+            m_attrib_filtered = WebRequestFlags.None;            
         }
 
         /// <summary>
@@ -681,9 +680,11 @@ namespace UnityExt.Core {
         /// Execution Loop to handle the web request state machine.
         /// </summary>
         /// <returns></returns>
-        protected override bool OnExecute() {            
+        protected override void OnStateUpdate(WebRequestState p_state) {
+            
+            /*
             //In case of cancel
-            if(state == WebRequestState.Cancel) return false;
+            if (state == WebRequestState.Cancel) { Stop(); return; }
             //Process FSM state
             switch(m_internal_state) {
                 //Keep looping
@@ -952,6 +953,7 @@ namespace UnityExt.Core {
             }
             //Keep FSM looping
             return true;
+            //*/
         }        
         
         /// <summary>
@@ -1097,7 +1099,7 @@ namespace UnityExt.Core {
         /// <param name="p_type">Audio Type</param>
         /// <param name="p_default">Default Audio in case of error.</param>
         /// <returns>Texture instance</returns>
-        public Activity GetAudioClip(AudioType p_type,System.Action<AudioClip> p_callback,AudioClip p_default=null) {
+        public Process GetAudioClip(AudioType p_type,System.Action<AudioClip> p_callback,AudioClip p_default=null) {
             if(response == null)      { if(p_callback != null) p_callback(p_default); return null; }
             if(response.body == null) { if(p_callback != null) p_callback(p_default); return null; }
             Stream ss = response.body.stream;
@@ -1113,9 +1115,9 @@ namespace UnityExt.Core {
             fs.Flush();
             fs.Close();
             ss.Position=0;
-            Activity parser = null;
+            Process parser = null;
             parser =
-            Activity.Run(delegate(Activity a) {
+            Process.Start(delegate(ProcessContext ctx, Process p) {
                 switch(state) {
                     //Create the file:// request and run it
                     case 0: {
@@ -1138,14 +1140,18 @@ namespace UnityExt.Core {
                     break;
                     //Wait audio loading
                     case 2: {
-                        if(!c) { if(p_callback != null) p_callback(p_default); return false; }                        
-                        if(c.loadState == AudioDataLoadState.Failed) { if(p_callback != null) p_callback(p_default); return false; }
-                        if(c.loadState != AudioDataLoadState.Loaded) return true;
-                        if(p_callback != null) p_callback(c);
-                        temp_req.downloadHandler.Dispose();
-                        temp_req.Dispose();                        
+                        if(!c) { if(p_callback != null) p_callback(p_default); return false; }       
+                        switch(c.loadState) {                            
+                            case AudioDataLoadState.Failed: { if (p_callback != null) p_callback(p_default); return false; }
+                            case AudioDataLoadState.Loaded: {
+                                if (p_callback != null) p_callback(c);
+                                temp_req.downloadHandler.Dispose();
+                                temp_req.Dispose();
+                            }
+                            return false;
+                        }
                     }
-                    return false;
+                    return true;
                 }
                 return true;
             });            
@@ -1158,7 +1164,7 @@ namespace UnityExt.Core {
         /// Returns this webrequest execution state converted to status flags.
         /// </summary>
         /// <returns>Current webrequest status</returns>
-        override public StatusType GetStatus() {
+        public StatusType GetStatus() {
             switch(state) {
                 case WebRequestState.Idle:             return StatusType.Idle;                
                 case WebRequestState.Start:
@@ -1169,7 +1175,7 @@ namespace UnityExt.Core {
                 case WebRequestState.UploadComplete:
                 case WebRequestState.DownloadProgress:
                 case WebRequestState.DownloadComplete: return StatusType.Running;
-                case WebRequestState.Cached:
+                case WebRequestState.CacheSuccess:
                 case WebRequestState.Success:          return StatusType.Success;
                 case WebRequestState.Timeout:
                 case WebRequestState.Error:            return StatusType.Error;                
