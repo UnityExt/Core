@@ -176,6 +176,11 @@ namespace UnityExt.Core {
         public bool isError { get { return exception != null; } }
 
         /// <summary>
+        /// Flag that ensures execution of multiple contexts to be thread safe
+        /// </summary>
+        public bool threadSafe;
+
+        /// <summary>
         /// Executing context flag, during start/stop its the combined flags and during execution its the currently active one.
         /// </summary>
         public ProcessContext context { get; protected set; }
@@ -184,6 +189,7 @@ namespace UnityExt.Core {
         /// Internals
         /// </summary>
         private bool m_active;
+        private object m_lock_thread = new object();
 
         #endregion
 
@@ -404,14 +410,25 @@ namespace UnityExt.Core {
                     deltaTime = 0f;
                 }
                 break;
-                case ProcessState.Run: {                    
-                    context = p_context;
+                case ProcessState.Run: {                                        
                     if (!enabled)  break;
                     if (!m_active) break;
-                    //Update Clocks
-                    InternalTiming(ctx,s);
-                    //Execute logic
-                    OnExecute(ctx); 
+                    if(threadSafe) {
+                        lock(m_lock_thread) {
+                            //Update Clocks
+                            InternalTiming(ctx,s);
+                            //Execute logic
+                            context = ctx;
+                            OnExecute(ctx);
+                        }
+                    }
+                    else {
+                        //Update Clocks
+                        InternalTiming(ctx,s);
+                        //Execute logic
+                        context = ctx;
+                        OnExecute(ctx);
+                    }                    
                 }
                 break;                
             }

@@ -148,6 +148,16 @@ namespace UnityExt.Core {
         public long first { get; set; }
 
         /// <summary>
+        /// Flag that adds an extra layer of safety when state refreshing for multi-thread contexts.
+        /// </summary>
+        public bool threadSafe;
+
+        /// <summary>
+        /// Internal
+        /// </summary>
+        private object m_fsm_lock = new object();
+
+        /// <summary>
         /// Resets the FSM to initial state
         /// </summary>
         public void Reset() {
@@ -187,6 +197,17 @@ namespace UnityExt.Core {
         /// General state update handler, detect state difference and triggers all needed updates
         /// </summary>        
         private void StateRefresh(long p_state) {
+            if(threadSafe) {
+                lock(m_fsm_lock) {
+                    InternalStateRefresh(p_state);
+                }
+            }
+            else {
+                InternalStateRefresh(p_state);
+            }
+        }
+
+        private void InternalStateRefresh(long p_state) {
             m_lock_state = true;
             long f = m_prev_state;
             long s = p_state;
@@ -195,9 +216,9 @@ namespace UnityExt.Core {
                 StateChange(f,s);
                 m_prev_state = m_state;
             }
-            StateUpdate(s);            
+            StateUpdate(s);
             //If something changed above, apply
-            m_state = m_queue_state;            
+            m_state = m_queue_state;
             m_lock_state = false;
         }
 
@@ -205,9 +226,17 @@ namespace UnityExt.Core {
         /// Safe State Reset
         /// </summary>
         internal void InternalStateReset() {
-            m_lock_state = true;
-            StateReset();
-            m_lock_state = false;
+            if (threadSafe) {
+                lock (m_fsm_lock) {
+                    m_lock_state = true;
+                    StateReset();
+                    m_lock_state = false;
+                }
+            } else {
+                m_lock_state = true;
+                StateReset();
+                m_lock_state = false;
+            }            
         }            
         #endregion
 

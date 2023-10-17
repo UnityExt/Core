@@ -10,6 +10,7 @@ using NetStringContent            = System.Net.Http.StringContent;
 using HttpStatusCode              = System.Net.HttpStatusCode;
 using System.Security.Cryptography;
 using System.Text;
+using System.Runtime.CompilerServices;
 
 namespace UnityExt.Core {
 
@@ -19,10 +20,13 @@ namespace UnityExt.Core {
     /// </summary>
     public enum WebRequestState : byte {
         Idle=0,
+        Queue,
         Start,
-        Create,
+        Processing,
         CacheSearch,
-        CacheSuccess,        
+        CacheSuccess,
+        Create,
+        Send,
         UploadStart,
         Upload,
         UploadProgress,        
@@ -31,6 +35,8 @@ namespace UnityExt.Core {
         Download,
         DownloadProgress,
         DownloadComplete,
+        RequestComplete,
+        Stop,
         Success,
         Timeout,
         Cancel,
@@ -126,12 +132,12 @@ namespace UnityExt.Core {
             }            
             #endif
             StringBuilder log = new StringBuilder();
-            log.AppendLine($"=== Web Request ===");
+            log.AppendLine($"=== Web Request Paths ===");
             log.AppendLine($"Data:   {DataPath}");
             log.AppendLine($"Temp:   {TempPath}");
             log.AppendLine($"Cache:  {CachePath}");
             log.AppendLine($"Use FS: {CanUseFileSystem}");
-            log.AppendLine($"===================");
+            log.AppendLine($"=========================");
             Debug.Log(log.ToString());
         }
         
@@ -240,7 +246,7 @@ namespace UnityExt.Core {
             WebRequest req = new WebRequest();
             if(p_query  !=null) req.query   = p_query;
             if(p_request!=null) req.request = p_request;
-            req.OnRequestEvent = p_callback;
+            //req.OnRequestEvent = p_callback;
             req.Send(p_method,p_url,p_flags);
             return req;
         }
@@ -392,7 +398,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Flag that tells this web request is currently in operation
         /// </summary>
-        public bool active { 
+        protected bool active { 
             get { 
                 if(completed) return false;
                 switch(state) {
@@ -457,12 +463,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// WebRequest Current State
         /// </summary>
-        new public WebRequestState state { get; private set; }
-
-        /// <summary>
-        /// Error Message if Any
-        /// </summary>
-        public string error { get; private set;}
+        //new public WebRequestState state { get; private set; }
 
         /// <summary>
         /// Returns the combined progress of upload/download with a weight applied to prioritize either download or upload.
@@ -501,34 +502,53 @@ namespace UnityExt.Core {
         /// <summary>
         /// Helper to check if an attrib is set
         /// </summary>        
-        private bool IsAttrib(WebRequestFlags p_flag) { return (m_attrib_filtered & p_flag)!=0; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsFlagEnabled(WebRequestFlags p_flags) { return (m_attrib_filtered & p_flags)!=0; }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private bool IsFlagEnabled(WebRequestFlags p_flags,WebRequestFlags p_mask) { return (p_mask & p_flags) != 0; }
+        #endregion
+
+        #region Events
+
+        /// <summary>
+        /// Handler for execution loop
+        /// </summary>
+        new public Action<WebRequest> OnExecuteEvent;
+
+        /// <summary>
+        /// Handler for state changes
+        /// </summary>
+        new public Action<WebRequest,WebRequestState,WebRequestState> OnChangeEvent;
+
+        /// <summary>
+        /// Auxiliary Event Calling
+        /// </summary>        
+        protected override void InternalExecuteEvent(WebRequestState p_state                    ) { if (OnExecuteEvent != null) OnExecuteEvent(this            ); }
+        protected override void InternalChangeEvent (WebRequestState p_from,WebRequestState p_to) { if (OnChangeEvent  != null) OnChangeEvent (this,p_from,p_to); }
+
         #endregion
 
         /// <summary>
-        /// Handler for request events.
-        /// </summary>
-        public Action<WebRequest> OnRequestEvent { get { return (Action<WebRequest>)m_on_event; } set { m_on_event = value; } }
-        private Delegate m_on_event;
-
-        /// <summary>
         /// Internal
-        /// </summary>
-        private   State                         m_internal_state;
+        /// </summary>                
         protected UnityWebRequest               m_uwr;
         protected UnityWebRequestAsyncOperation m_uwr_op;
-        
+        //new protected bool threadSafe { get { return base.threadSafe; } set { base.threadSafe = value; } }
+
         /// <summary>
         /// CTOR.
         /// </summary>
-        public WebRequest() {
-            m_internal_state = State.Idle;
+        public WebRequest(string p_id="") : base(p_id) {            
             method  = HttpMethod.None;            
             state   = WebRequestState.Idle;
             attribs = WebRequestFlags.DefaultBuffer | WebRequestFlags.DefaultCache;            
             query   = new HttpQuery();
             request = new HttpRequest();
+            //Make sure loops are threadsafe as logic will be running both in threads and unity's loops
+            fsm.threadSafe  = true;
+            threadSafe      = true;            
             //If cache isn't initialized yet, do in the first run
-            if(!m_fs_init) InitDataFileSystem();
+            if (!m_fs_init) InitDataFileSystem();
         }
 
         #region Operations
@@ -544,17 +564,15 @@ namespace UnityExt.Core {
             if(active) { Debug.LogWarning($"WebRequest> Already Running."); return this; }
             id        = $"web-{p_method.ToLower()}-{GetHashCode().ToString("x")}";
             method    = p_method;
-            url       = p_url;
-            m_internal_url     = GetURL(false);                        
-            m_internal_state   = State.CacheRead;
+            url       = p_url;            
             attribs   = p_flags;
+            m_internal_url    = GetURL(false);
             m_attrib_filtered = GetAttribs();            
             code      = (HttpStatusCode)0; //invalid
             progress  = 0f;
-            //Dispatch the event to outside
-            DispatchStateEvent(WebRequestState.Start);
+            state = WebRequestState.Queue;            
             //Add to the execution pool
-            base.Start();
+            base.Start(ProcessContext.Update);
             return this;
         }
 
@@ -614,7 +632,7 @@ namespace UnityExt.Core {
         public void Cancel() {
             if(m_uwr==null) return;
             InternalDispose();
-            DispatchStateEvent(WebRequestState.Cancel);
+            state = WebRequestState.Cancel;
             base.Stop();
         }
 
@@ -626,6 +644,28 @@ namespace UnityExt.Core {
         }
 
         #region Internals
+
+        /// <summary>
+        /// Handler called when the activity entered execution pool.
+        /// </summary>
+        protected override void OnStart() {
+            state = WebRequestState.Start;
+        }
+
+        protected override void OnStop() {
+            switch (state) {
+                case WebRequestState.Queue: break;
+                case WebRequestState.Cancel: {
+                    state = WebRequestState.Stop;
+                }
+                break;
+                default: {
+                    state = WebRequestState.Stop;
+                    state = isError ? WebRequestState.Error : WebRequestState.Success;
+                }
+                break;
+            }
+        }
 
         /// <summary>
         /// Helper to dispose the internal structures.
@@ -645,21 +685,13 @@ namespace UnityExt.Core {
         }
 
         /// <summary>
-        /// Helper to change state and dispatch events
-        /// </summary>        
-        protected void DispatchStateEvent(WebRequestState p_state) {
-            state = p_state;
-            if(OnRequestEvent!=null)OnRequestEvent(this);
-        }
-
-        /// <summary>
-        /// Helper to change state and dispatch events
-        /// </summary>        
-        protected void DispatchErrorEvent(string p_error) {
-            error    = p_error;
+        /// Throws an exception for the web request
+        /// </summary>
+        /// <param name="p_error"></param>
+        /// <param name="p_raise_event"></param>
+        new public void Throw(Exception p_error,bool p_raise_event=false) {
             progress = 1f;
-            Debug.LogWarning($"WebRequest> {error}");
-            DispatchStateEvent(WebRequestState.Error);
+            base.Throw(p_error,p_raise_event);
         }
 
         /// <summary>
@@ -681,301 +713,356 @@ namespace UnityExt.Core {
         /// </summary>
         /// <returns></returns>
         protected override void OnStateUpdate(WebRequestState p_state) {
-            
-            /*
-            //In case of cancel
-            if (state == WebRequestState.Cancel) { Stop(); return; }
-            //Process FSM state
-            switch(m_internal_state) {
-                //Keep looping
-                case State.Idle:       return true;
-                //Processing another async step
-                case State.Processing: return true;
-                //Auxiliary state to finish the loop
-                case State.Terminate: return false;
-                //Request Timed out
-                case State.Timeout: {
-                    InternalDispose();
-                    error    = "Request Timeout";
-                    progress = 1f;
-                    DispatchStateEvent(WebRequestState.Timeout);
-                    //Kill process
-                }
-                return false;
-                //Initializes the cache system and try searching for an entry matching the request URL
-                case State.CacheRead: {
-                    //If no cache mode skip
-                    if(IsAttrib(WebRequestAttrib.NoCache)) { m_internal_state = State.RequestSetup; break; }                    
-                    //Sample cache based on URL generated MD5 hash
-                    WebCacheEntry e = WebRequestCache.Get(m_internal_url);
-                    //If no cache continue request
-                    if(e==null)         { m_internal_state = State.RequestSetup; break; }
-                    //Fetch TTL
-                    float cache_ttl = ttl<=0f ? DefaultCacheTTL : ttl;
-                    //If cache is dead dispose and continue request
-                    if(!e.IsAlive(cache_ttl)) { WebRequestCache.Dispose(e); m_internal_state = State.RequestSetup; break; }
-                    //Retrieve cached stream and proceed to final steps
-                    response = new HttpRequest();
-                    response.body.stream = e.GetStream($"{TempPath}{e.hash}_response");
-                    response.progress = 1f;                    
-                    m_internal_state = State.CacheHit;                    
+
+            //Debug.Log($"WebRequest> OnStateUpdate / [{context}] {p_state}");
+
+            switch (p_state) {
+
+                case WebRequestState.Queue: {
                 }
                 break;
-                //In case there is no cache the request will be setup, filling needed form data and preparing streams.                
-                case State.RequestSetup: {                    
+                case WebRequestState.Start: {
+                    state = WebRequestState.CacheSearch;
+                }
+                break;
+
+                #region CacheSearch
+                case WebRequestState.CacheSearch: {
+                    //Invalidate cached flag
+                    cached = false;
+                    //Start cache search data process loop
+                    Process wr_cache_search_tsk = 
+                    Process.Start(
+                    delegate (ProcessContext p_ctx,Process p_proc) {
+                        //Fetch TTL
+                        float cache_ttl = ttl <= 0f ? DefaultCacheTTL : ttl;
+                        //Check if cache will be used
+                        bool use_cache = !IsFlagEnabled(WebRequestFlags.NoCache);
+                        //Sample cache based on URL generated MD5 hash or <null> if no-cache
+                        WebCacheEntry e = use_cache ? WebRequestCache.Get(m_internal_url) : null;
+                        //Last check if cache exists or expired
+                        use_cache = e == null ? false : e.IsAlive(cache_ttl);
+                        //If not using cache skip to creating the response
+                        if(!use_cache) {
+                            //If entry exists dispose it
+                            if(e!=null) WebRequestCache.Dispose(e);
+                            //Switch to create state
+                            state = WebRequestState.Create; 
+                            //Exit process
+                            return false;
+                        }                        
+                        //Retrieve cached stream and proceed to final steps
+                        response = new HttpRequest();
+                        response.body.stream = e.GetStream($"{TempPath}{e.hash}_response");
+                        response.progress = 1f;
+                        cached = true;
+                        //Trigger Cache Success inside main thread
+                        wr_cache_search_tsk =
+                        Process.Start(
+                        delegate (ProcessContext p_success_ctx,Process p_success_proc) {
+                            state = WebRequestState.CacheSuccess;
+                            return false;
+                        },ProcessContext.Update);
+                        wr_cache_search_tsk.name = $"WebRequest.{id}.Cache.Success";
+                        return false;
+                    },DataProcessContext);
+                    state = WebRequestState.Processing;
+                }
+                break;
+                #endregion
+
+                #region Create
+                case WebRequestState.Create: {
                     //Mini state machine 
-                    WebRequestAttrib buffer_mode = (m_attrib_filtered & WebRequestAttrib.BufferMask);
-                    int      init_step     = 0;
-                    Activity request_setup = null;
-                    Activity form_copy     = null;
-                    string   temp_request_fp  = buffer_mode == WebRequestAttrib.FileBuffer ? GetTempFilePath("request")  : "";
-                    string   temp_response_fp = buffer_mode == WebRequestAttrib.FileBuffer ? temp_request_fp.Replace("request","response") : "";
-                    Predicate<Activity> init_task = null;
+                    WebRequestFlags buffer_mode = (m_attrib_filtered & WebRequestFlags.BufferMask);
+                    int wr_create_state = 0;
+                    Process wr_setup_task = null;
+                    Process form_copy = null;
+                    string temp_request_fp  = buffer_mode == WebRequestFlags.FileBuffer ? GetTempFilePath("request") : "";
+                    string temp_response_fp = buffer_mode == WebRequestFlags.FileBuffer ? temp_request_fp.Replace("request","response") : "";
+                    ProcessAction wr_create_task = null;
                     //Flag telling the stream in the request was made before
                     bool is_custom_stream = true;
                     //Initialization loop, will run inside a thread and also unity                    
-                    init_task =
-                    delegate(Activity a) {
-                        //In case of cancel
-                        if(state == WebRequestState.Cancel) return false;                        
+                    wr_create_task =
+                    delegate (ProcessContext p_ctx,Process p_proc) {
+                        //In case of the main request ending
+                        if (!active) return false;
                         //State machine step
-                        switch(init_step) {
+                        switch (wr_create_state) {
                             //Initialize
-                            case 0: {   
+                            case 0: {
                                 //Assert Request instance
-                                if(request==null) request = new HttpRequest();
+                                if (request == null) request = new HttpRequest();
                                 //If the body doesnt have any stream
-                                if(request.body.stream==null) {
+                                if (request.body.stream == null) {
                                     is_custom_stream = false;
-                                    Stream ss = buffer_mode == WebRequestAttrib.FileBuffer ? (Stream)File.Open(temp_request_fp, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite) : (Stream)new MemoryStream();
+                                    FileInfo fi = new FileInfo(temp_request_fp);                                    
+                                    Stream ss = null;
+                                    if(buffer_mode == WebRequestFlags.FileBuffer) {
+                                        FileStream fs = fi.Open(FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.ReadWrite);
+                                        fs.SetLength(0);
+                                        //fs.Flush();
+                                        ss = fs;
+                                    }
+                                    else {
+                                        ss = new MemoryStream();
+                                    }
+                                    //Stream ss = buffer_mode == WebRequestFlags.FileBuffer ? (Stream)File.Open(temp_request_fp,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.ReadWrite) : (Stream)new MemoryStream();
                                     request.body.Initialize(ss);
-                                }                                
+                                }
                                 //Flush non unity
-                                init_step = 1;
+                                wr_create_state = 1;
                             }
                             break;
                             //Flush non-unity fields (per frame)
                             case 1: {
                                 //If its a custom stream just skip the form generation
-                                if(is_custom_stream) { init_step = 3; form_copy = Timer.Delay(1f / 60f); break; }
+                                if (is_custom_stream) { wr_create_state = 3; form_copy = Process.Delay(1f / 60f); break; }
                                 //Keep consuming fields to flush
-                                if(request.body.FlushStep(false)) break;
+                                if (request.body.FlushStep(false)) break;
                                 //Set the step to 'unity' flush
-                                init_step=2;
+                                wr_create_state = 2;
                                 //Create another task but now in unity main thread
-                                request_setup = Activity.Run(init_task,ActivityContext.Update);
-                                request_setup.id = id+"$request-setup-unity";
-                                //kill the thread mode
+                                wr_setup_task = Process.Start(wr_create_task,ProcessContext.Update);
+                                wr_setup_task.name = $"WebRequest.{id}.Streams";
                             }
+                            //kill the thread mode
                             return false;
                             //Flush unity data fields (per frame)
-                            case 2: {   
+                            case 2: {
                                 //Keep consuming fields to flush
-                                if(request.body.FlushStep(true)) break;
+                                if (request.body.FlushStep(true)) break;
                                 //Flush form information into the stream
                                 form_copy = request.body.FlushFormAsync();
                                 //Wait form copying into stream
-                                init_step=3;
+                                wr_create_state = 3;
                             }
                             break;
                             //Wait form copy and completes the setup
-                            case 3: {                                   
+                            case 3: {
                                 //Null check
-                                if(form_copy==null)               { DispatchErrorEvent("Form Copy into Stream Failed to Start"); return false; }
+                                if (form_copy == null) { Throw(new Exception("WebRequest: Form Copy into Stream Failed to Start")); return false; }
                                 //Wait copy completion
-                                if(!form_copy.completed) break;                                
-                                if(form_copy.id == "form-error")  { DispatchErrorEvent("Form Copy into Stream Failed");          return false; }
-                                if(form_copy.id == "form-cancel") { DispatchErrorEvent("Form Copy into Stream Cancelled");       return false; }                                
+                                if (form_copy.state == ProcessState.Run) break;
+                                if (form_copy.name == "form-error" ) { Throw(new Exception("WebRequest: Form Copy into Stream Failed")); return false; }
+                                if (form_copy.name == "form-cancel") { Throw(new Exception("WebRequest: Form Copy into Stream Cancelled")); return false; }
                                 //Request is ready to ship, so create response
                                 response = new HttpRequest();
                                 //Prepare the response stream
-                                Stream ss = buffer_mode == WebRequestAttrib.FileBuffer ? (Stream)File.Open(temp_response_fp, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite) : (Stream)new MemoryStream();
+                                //Stream ss = buffer_mode == WebRequestFlags.FileBuffer ? (Stream)File.Open(temp_response_fp,FileMode.CreateNew,FileAccess.ReadWrite,FileShare.ReadWrite) : (Stream)new MemoryStream();
+                                FileInfo fi = new FileInfo(temp_response_fp);
+                                Stream ss = null;
+                                if (buffer_mode == WebRequestFlags.FileBuffer) {
+                                    FileStream fs = fi.Open(FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.ReadWrite);
+                                    fs.SetLength(0);
+                                    //fs.Flush();
+                                    ss = fs;
+                                } else {
+                                    ss = new MemoryStream();
+                                }
                                 //Set the stream reference
                                 response.body.stream = ss;
-                                //Mark as created
-                                m_internal_state = State.Create;
-                                //Kill task
+                                //Prepare Unity's Request Send inside main thread
+                                Process wr_send_tsk = 
+                                Process.Start(delegate (ProcessContext p_send_ctx,Process p_send_proc) {
+                                    state = WebRequestState.Send;
+                                    return false;
+                                },ProcessContext.Update);
+                                wr_send_tsk.name = $"WebRequest.{id}.Send";
                             }
+                            //Kill task
                             return false;
                         }
                         return true;
                     };
                     //Start the initialization thread
-                    request_setup = Run(init_task,DataProcessContext);
-                    request_setup.id = id+"$request-setup-thread";
+                    wr_setup_task = Process.Start(wr_create_task,DataProcessContext);
+                    wr_setup_task.name = $"WebRequest.{id}.Setup";
                     //Keep running until parallel task runs
-                    m_internal_state = State.Processing;
+                    state = WebRequestState.Processing;
                 }
                 break;
-                //All needed data of the request are set, now Unity's web request needs to be setup and started
-                case State.Create: {
+                #endregion
+
+                #region Send
+                case WebRequestState.Send: {
                     //Create handlers
-                    UploadHandlerStream   uh = new UploadHandlerStream(request.body.stream);                    
+                    UploadHandlerStream   uh = new UploadHandlerStream(request.body.stream);
                     DownloadHandlerStream dh = new DownloadHandlerStream(response.body.stream);
-                    if(!dh.valid) { DispatchErrorEvent("Failed to Create Download Handler!"); return false; }                    
+                    if (!dh.valid) { Throw(new Exception("WebRequest: Failed to Create Download Handler!")); break; }
                     //Create request
                     m_uwr = new UnityWebRequest(m_internal_url,method,dh,uh);
                     //Flag telling its a GET request so there is no upload
                     bool is_get = method == HttpMethod.Get;
                     //Upload size in mb
-                    float upload_mb = ((float)request.body.length)/1024f/1024f;
+                    float upload_mb = ((float)request.body.length) / 1024f / 1024f;
                     //Balance out progress report the bigger the upload
                     //few kbytes = 20% 5mb+ 60%
-                    float upload_progress_w   = is_get ? 0f : Mathf.Lerp(0.05f,0.6f,upload_mb/5f);
+                    float upload_progress_w = is_get ? 0f : Mathf.Lerp(0.05f,0.6f,upload_mb / 5f);
                     float download_progress_w = 1f - upload_progress_w;
                     //Fill headers
                     request.header.CopyTo(m_uwr);
                     //Start Request
-                    m_uwr_op = m_uwr.SendWebRequest(); 
-                    //Dispatch the event to outside
-                    DispatchStateEvent(WebRequestState.Create);
-                    //Keep the state machine looping
-                    m_internal_state  = State.Processing;
+                    m_uwr_op = m_uwr.SendWebRequest();
+                    //Keep the main fsm looping
+                    state = WebRequestState.Processing;
                     //Upload/Download state machine vars
-                    float  last_upload_progress   = -0.1f;
-                    float  last_download_progress = -0.1f;
-                    bool is_first_download    = true;
-                    bool is_first_upload      = true;                                        
+                    float last_upload_progress = -0.1f;
+                    float last_download_progress = -0.1f;
+                    bool is_first_download = true;
+                    bool is_first_upload = true;
                     bool is_download_complete = false;
-                    bool is_upload_complete   = false;                    
-                    float  timeout_elapsed    = 0f;
+                    bool is_upload_complete = false;
+                    float timeout_elapsed = 0f;
                     //Starts the unity request polling task
-                    Activity uwr_task = null;
-                    uwr_task = 
-                    Run(
-                    delegate(Activity a) {
+
+                    Process uwr_task =
+                    Process.Start(
+                    delegate (ProcessContext p_ctx,Process p_proc) {
                         //In case of cancel
-                        if(state == WebRequestState.Cancel) return false;
-                        float timeout_duration = timeout<=0f ? DefaultTimeout : timeout;
+                        if (!active) return false;
+                        float timeout_duration = timeout <= 0f ? DefaultTimeout : timeout;
                         //Update Timeout
-                        if(timeout_duration > 0f) {
+                        if (timeout_duration > 0f) {
                             timeout_elapsed += Time.unscaledDeltaTime;
-                            if(timeout_elapsed >= timeout_duration) {                                
-                                m_internal_state = State.Timeout;                                
+                            if (timeout_elapsed >= timeout_duration) {
+                                state = WebRequestState.Timeout;
+                                Throw(new Exception($"WebRequest: Timeout"));                                
                                 return false;
                             }
                         }
                         //Progress values
-                        bool is_done            = m_uwr.isDone;                        
-                        float upload_progress   = is_done ? 1f : (is_get ? 1f : uh.progress*0.99f);
-                        float download_progress = is_done ? 1f : dh.progress*0.99f;
-                        progress = (upload_progress_w*upload_progress) + (download_progress_w*download_progress);
+                        bool is_done = m_uwr.isDone;
+                        float upload_progress = is_done ? 1f : (is_get ? 1f : uh.progress * 0.99f);
+                        float download_progress = is_done ? 1f : dh.progress * 0.99f;
+                        progress = (upload_progress_w * upload_progress) + (download_progress_w * download_progress);
                         //Update the http data
                         request.progress  = upload_progress;
                         response.progress = download_progress;
-                        //Process progression (GET will not trigger upload)                        
-                        ProcessProgress(true, ref is_first_upload,  ref is_upload_complete,  ref last_upload_progress,  upload_progress);
-                        ProcessProgress(false,ref is_first_download,ref is_download_complete,ref last_download_progress,download_progress);
+                        //Process progression (GET will not trigger upload)
+                        bool has_u = false;
+                        bool has_d = false;
+                        has_u = ProcessProgress(true,ref is_first_upload,ref is_upload_complete,ref last_upload_progress,upload_progress);
+                        has_d = ProcessProgress(false,ref is_first_download,ref is_download_complete,ref last_download_progress,download_progress);
+                        //Reset timeout counter if any progress
+                        if (has_u || has_d) timeout_elapsed = 0f;
                         //Keep running
-                        if(!is_done) return true;
+                        if (!is_done) return true;
                         //All steps completed                        
-                        m_internal_state = State.ResponseComplete;
-                        return false;                        
-                    });
-
-                }
-                break;                
-                //Request is cached, either file or memory
-                //Request Response Body is ready, either on memory or file
-                case State.ResponseComplete:
-                case State.CacheHit: {
-                    //Check if state is cached and fill cache-only fields                    
-                    cached = m_internal_state == State.CacheHit;
-                    //Process final resulting state
-                    switch(m_internal_state) {
-                        case State.CacheHit: {
-                            code = HttpStatusCode.NotModified;                                                        
-                            //Dispatch the event to outside
-                            DispatchStateEvent(WebRequestState.Cached);
-                            //End request as it was cache hit
-                        }
+                        state = WebRequestState.RequestComplete;
                         return false;
-
-                        case State.ResponseComplete: {                            
-                            code   = (HttpStatusCode)m_uwr.responseCode;
-                            bool is_error = m_uwr.isNetworkError || m_uwr.isHttpError;
-                            //Error event and finish loop                                                        
-                            if(is_error) {              
-                                string error_pfx = m_uwr.isNetworkError ? "[network]" : "[http]";
-                                //Write response headers
-                                response.header.CopyFrom(m_uwr);  
-                                DispatchErrorEvent($"{error_pfx} {m_uwr.error}"); 
-                                return false; 
-                            }
-                            //Task to finalize the request                            
-                            Activity success_activity = null;
-                            //Mini FSM
-                            int success_state = 0;
-                            System.Predicate<Activity> success_task_fn = null;                            
-                            success_task_fn =                            
-                            delegate(Activity a) { 
-                                switch(success_state) {
-                                    //Execute heavy steps | Thread
-                                    case 0: {
-                                        //Reset Stream position
-                                        response.body.stream.Seek(0, SeekOrigin.Begin);                            
-                                        WebRequestAttrib cache_mode = (m_attrib_filtered & WebRequestAttrib.CacheMask);
-                                        //If no error save cache
-                                        if(cache_mode != WebRequestAttrib.NoCache) {
-                                            WebRequestCache.Add(m_internal_url,response.body.stream,cache_mode == WebRequestAttrib.FileCache);
-                                        }                            
-                                        //Restore seek position
-                                        response.body.stream.Seek(0, SeekOrigin.Begin);
-                                        //next success state
-                                        success_state = 1;
-                                        //Continue loop but in main thread
-                                        success_activity = Run(success_task_fn,ActivityContext.Update);
-                                        success_activity .id = id+"$finalize-success";
-                                    }
-                                    return false;
-                                    //Finalize in unity main thread
-                                    case 1: {
-                                        //Notify success
-                                        DispatchStateEvent(WebRequestState.Success);                    
-                                        //Stops the execution
-                                        m_internal_state = State.Terminate;
-                                    }
-                                    return false;
-                                }
-
-                                return true;
-                            };   
-                            //Run finalization as thread to avoid fps drops
-                            success_activity = Run(success_task_fn,DataProcessContext);
-                            success_activity .id = id+"$finalize";
-                            //Wait for finalize 
-                            m_internal_state = State.Processing;
-                        }
-                        break;
-                    }                    
+                    },ProcessContext.Update);
+                    uwr_task.name = $"WebRequest.Unity.Update";
                 }
                 break;
+                #endregion
+
+                #region RequestComplete
+                case WebRequestState.RequestComplete: {
+                    code = (HttpStatusCode)m_uwr.responseCode;
+                    bool is_error = m_uwr.isNetworkError || m_uwr.isHttpError;
+                    //Error event and finish loop                                                        
+                    if (is_error) {
+                        string error_pfx = m_uwr.isNetworkError ? "Network" : "HTTP";
+                        //Write response headers
+                        response.header.CopyFrom(m_uwr);
+                        Throw(new Exception($"WebRequest: {error_pfx} Error @ {m_uwr.error}"));
+                        return;
+                    }
+                    //Task to finalize the request                            
+                    Process wr_finalize_task = null;
+                    //Mini FSM
+                    int wr_finalize_state = 0;
+                    ProcessAction wr_finalize_cb = null;
+                    wr_finalize_cb =
+                    delegate (ProcessContext p_ctx,Process p_proc) {
+                        switch (wr_finalize_state) {
+                            //Execute heavy steps | Thread
+                            case 0: {
+                                //Reset Stream position
+                                response.body.stream.Seek(0,SeekOrigin.Begin);
+                                //Filter cache flags
+                                WebRequestFlags cache_mode = (m_attrib_filtered & WebRequestFlags.CacheMask);
+                                if (cache_mode == WebRequestFlags.DefaultCache) cache_mode = DefaultCacheMode;
+                                //Validate cache is enabled
+                                bool use_cache = IsFlagEnabled(cache_mode,WebRequestFlags.FileCache | WebRequestFlags.MemoryCache);
+                                if (use_cache) {
+                                    //If cache is file system based
+                                    bool use_fs = IsFlagEnabled(cache_mode,WebRequestFlags.FileCache);
+                                    //Save the cache
+                                    WebRequestCache.Add(m_internal_url,response.body.stream,use_fs);
+                                }
+                                //Restore seek position
+                                response.body.stream.Seek(0,SeekOrigin.Begin);
+                                //next success state
+                                wr_finalize_state = 1;
+                                //Continue loop but in main thread
+                                wr_finalize_task = Process.Start(wr_finalize_cb,ProcessContext.Update);
+                                wr_finalize_task.name = $"WebRequest.{id}.Complete";
+;
+                            }
+                            return false;
+                            //Finalize in unity main thread
+                            case 1: {
+                                base.Stop();
+                            }
+                            return false;
+                        }
+
+                        return true;
+                    };
+                    //Run finalization as thread to avoid fps drops
+                    wr_finalize_task = Process.Start(wr_finalize_cb,DataProcessContext);
+                    wr_finalize_task.name = $"WebRequest.{id}.Finalize";
+                    //Wait for finalize 
+                    state = WebRequestState.Processing;
+                }
+                break;
+                #endregion
+
+                case WebRequestState.Processing: {
+                    //Wait for secondary states to run
+                }
+                break;
+
+                case WebRequestState.CacheSuccess: {
+                    code = HttpStatusCode.NotModified;
+                    //End request as it was cache hit
+                    base.Stop();
+                }
+                break;
+
             }
-            //Keep FSM looping
-            return true;
-            //*/
-        }        
+
+        }      
         
         /// <summary>
         /// Helper for generating start,progress complete states
         /// </summary>        
-        private void ProcessProgress(bool p_is_upload,ref bool p_is_first,ref bool p_is_complete,ref float p_progress,float p_next_progress) {            
+        private bool ProcessProgress(bool p_is_upload,ref bool p_is_first,ref bool p_is_complete,ref float p_progress,float p_next_progress) {
+            bool has_progress = false;
             if(p_next_progress>p_progress) {
                 p_progress = p_next_progress;
                 if(p_is_first) { 
                     p_is_first=false;
                     //Start
-                    DispatchStateEvent(p_is_upload ? WebRequestState.UploadStart : WebRequestState.DownloadStart);
-                }                
+                    state = (p_is_upload ? WebRequestState.UploadStart : WebRequestState.DownloadStart);
+                    state = WebRequestState.Processing;
+                }
                 //Progress                           
-                DispatchStateEvent(p_is_upload ? WebRequestState.UploadProgress : WebRequestState.DownloadProgress);
+                state = (p_is_upload ? WebRequestState.UploadProgress : WebRequestState.DownloadProgress);
+                state = WebRequestState.Processing;
+                has_progress = true;
             }           
-            if(p_is_complete) return;            
+            if(p_is_complete) return true;            
             if(p_progress>=1f) {
                 p_is_complete=true;
                 //Progress                           
-                DispatchStateEvent(p_is_upload ? WebRequestState.UploadComplete : WebRequestState.DownloadComplete);
+                state = (p_is_upload ? WebRequestState.UploadComplete : WebRequestState.DownloadComplete);
+                has_progress = true;
             }
+            return has_progress;
         }
 
         #endregion
@@ -1168,12 +1255,13 @@ namespace UnityExt.Core {
             switch(state) {
                 case WebRequestState.Idle:             return StatusType.Idle;                
                 case WebRequestState.Start:
-                case WebRequestState.Create:                
+                case WebRequestState.Queue:                
                 case WebRequestState.UploadStart:                
                 case WebRequestState.DownloadStart:
                 case WebRequestState.UploadProgress:                
                 case WebRequestState.UploadComplete:
                 case WebRequestState.DownloadProgress:
+                case WebRequestState.Processing:
                 case WebRequestState.DownloadComplete: return StatusType.Running;
                 case WebRequestState.CacheSuccess:
                 case WebRequestState.Success:          return StatusType.Success;

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Unity.Jobs;
 using UnityEditor.VersionControl;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.UI;
 using UnityExt.Core;
 using Task = System.Threading.Tasks.Task;
@@ -662,6 +663,15 @@ namespace UnityExt.Core {
                 return true;
             }
         }
+
+        #if UNITY_EDITOR  && PROCESS_PROFILER
+        /// <summary>
+        /// Helper for profiler sample naming
+        /// </summary>
+        internal string        profilerKey     = "";
+        internal CustomSampler profilerSampler;
+        internal bool          profilerEnabled = false;
+        #endif
 
         /// <summary>
         /// Executing Context

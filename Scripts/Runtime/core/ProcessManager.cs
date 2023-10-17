@@ -9,6 +9,7 @@ using System;
 using System.Security.Cryptography;
 using System.Reflection;
 using Unity.Jobs;
+using UnityEngine.Profiling;
 
 namespace UnityExt.Core {
 
@@ -33,9 +34,9 @@ namespace UnityExt.Core {
             /// Internal loops
             /// </summary>            
             internal void Awake() { DontDestroyOnLoad(gameObject); }
-            internal void Update     () { if(manager)manager.UpdateUnitContext(ProcessContext.Update     ,-1); }
-            internal void LateUpdate () { if(manager)manager.UpdateUnitContext(ProcessContext.LateUpdate ,-1); }
-            internal void FixedUpdate() { if(manager)manager.UpdateUnitContext(ProcessContext.FixedUpdate,-1); }
+            internal void Update     () { if(manager)manager.UpdateUnitContext(ProcessContext.Update     ,-1,""); }
+            internal void LateUpdate () { if(manager)manager.UpdateUnitContext(ProcessContext.LateUpdate ,-1,""); }
+            internal void FixedUpdate() { if(manager)manager.UpdateUnitContext(ProcessContext.FixedUpdate,-1,""); }
 
         }
         #endregion
@@ -210,7 +211,7 @@ namespace UnityExt.Core {
         /// Executes the loop in the chosen process context.
         /// </summary>
         /// <param name="p_context"></param>
-        internal void UpdateUnitContext(ProcessContext p_context,int p_thread_index) {                        
+        internal void UpdateUnitContext(ProcessContext p_context,int p_thread_index,string p_thread_name) {                        
             //Fetch unit idx
             int unit_idx = GetUnitId(p_context);
             if (unit_idx < 0) return;
@@ -224,7 +225,13 @@ namespace UnityExt.Core {
             int o = !is_thread ? 0 : p_thread_index;
             int c = !is_thread ? 1 : maxThreads;                
             //Step execute all processes associated with unit
+            #if UNITY_EDITOR && PROCESS_PROFILER
+            if(is_thread) Profiler.BeginThreadProfiling($"Scripting",p_thread_name);
+            #endif
             pu.Execute(o,c);            
+            #if UNITY_EDITOR && PROCESS_PROFILER
+            if(is_thread) Profiler.EndThreadProfiling();
+            #endif
         }
 
         /// <summary>
@@ -234,7 +241,7 @@ namespace UnityExt.Core {
             //Keep storing the last clock sample
             isCompiling = EditorApplication.isCompiling;            
             //Step Editor Update context
-            UpdateUnitContext(ProcessContext.Editor,-1); 
+            UpdateUnitContext(ProcessContext.Editor,-1,""); 
         }
 
         /// <summary>
@@ -243,6 +250,7 @@ namespace UnityExt.Core {
         /// <param name="p_args"></param>
         private void UpdateThread(object p_args) {
             int thd = (int)p_args;
+            string thd_name = Thread.CurrentThread.Name;
             //Allows some editor bound flags to update
             Thread.Sleep(500);
             while (true) {
@@ -252,14 +260,14 @@ namespace UnityExt.Core {
                 Thread.Sleep(0);
                 #if UNITY_EDITOR
                 //Run Editor Step
-                UpdateUnitContext(ProcessContext.EditorThread,thd);
+                UpdateUnitContext(ProcessContext.EditorThread,thd,thd_name);
                 #endif
                 //Skip is Paused
                 //lock(lock_playing) {
                     if ( isPaused ) continue;
                     if (!isPlaying) continue;                
                     //Run Runtime Step
-                    UpdateUnitContext(ProcessContext.Thread,thd);
+                    UpdateUnitContext(ProcessContext.Thread,thd,thd_name);
                 //}
             }
         }
@@ -432,7 +440,7 @@ namespace UnityExt.Core {
             //Create threads
             for (int i = 0;i < maxThreads;i++) {
                 Thread thd = new Thread(UpdateThread);
-                thd.Name = $"process-thread-{i.ToString("000")}";
+                thd.Name = $"Proc.Thread-{i}";
                 thd.Start(i);
                 threads.Add(thd);
             }
@@ -490,7 +498,7 @@ namespace UnityExt.Core {
             if(!p_force)if (!isPlaying) { m_runner_exist = false; return; }
 
             //Create and cache 'runner'            
-            GameObject go = new GameObject("@process",typeof(Runner));
+            GameObject go = new GameObject("@Process.Runner",typeof(Runner));
             Runner go_r = go.GetComponent<Runner>();
             m_runner = go_r;
             go_r.manager = this;            

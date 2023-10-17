@@ -198,22 +198,24 @@ namespace UnityExt.Core {
             if(m_cache_table.ContainsKey(h)) { Debug.LogWarning($"WebRequestCache> Cache Collision at [{h}]"); return; }
             if(p_use_filesystem) {
                 string fp = $"{WebRequest.CachePath}{h}";
-                Debug.Log($"WebRequestCache> Writing Cache at {fp}");
-                FileStream fs = File.Open(fp, FileMode.CreateNew, FileAccess.ReadWrite);
-                p_stream.CopyTo(fs);
+                //Debug.Log($"WebRequestCache> Writing Cache at {fp}");
+                FileStream fs = File.Open(fp, FileMode.CreateNew, FileAccess.ReadWrite);               
+                p_stream.CopyTo(fs,128*1024);
                 fs.Flush();
                 fs.Close();
                 Add(new FileInfo(fp));
                 return;
             }
             MemoryStream ms = new MemoryStream();
-            p_stream.CopyTo(ms);
+            p_stream.CopyTo(ms,128*1024);
             ms.Flush();
             ms.Seek(0, SeekOrigin.Begin);
             WebCacheEntry e = new WebCacheEntry();
             e.Set(h,ms);  
             m_cache_table[h] = e;
         }
+        //static byte[] m_copy_buffer = new byte[128 * 1024];
+
 
         /// <summary>
         /// Generates a MD5 hash to index a cache entry.

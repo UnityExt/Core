@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Profiling;
 using UnityEngine.UIElements;
 using Stopwatch = System.Diagnostics.Stopwatch;
 
@@ -234,7 +235,7 @@ namespace UnityExt.Core {
             time         = 0f;
             timeUnscaled = 0f;            
             deltaTime    = 0f;
-            deltaTimeUnscaled = 0f;
+            deltaTimeUnscaled = 0f;            
         }
 
         /// <summary>
@@ -310,6 +311,7 @@ namespace UnityExt.Core {
                     bool out_unit = p.outUnit;
                     if (out_unit) {
                         p.SetState(p.context,ProcessState.Stop);
+                        p.profilerEnabled = false;
                         manager.PushProcess(p);
                     }
                 }
@@ -332,8 +334,15 @@ namespace UnityExt.Core {
                 //Switch to run                
                 lock (p) {
                     bool in_unit = p.inUnit;
-                    //Init timers
+                    //Init
+                    #if UNITY_EDITOR && PROCESS_PROFILER
+                    p.profilerKey     = $"Proc.{context}@{(string.IsNullOrEmpty(p.name) ? $"P#{p.pid}" : p.name)}";
+                    CustomSampler cps = CustomSampler.Create(p.profilerKey);
+                    p.profilerSampler = cps == null ? (CustomSampler)CustomSampler.Get(p.profilerKey) : cps;
+                    p.profilerEnabled = p.profilerSampler != null;
+                    #endif
                     p.SetTime(id,p.useTimeScale ? t : tu,true);
+                    //Set 'Add' state
                     p.SetState(context,ProcessState.Add);
                     if (in_unit) {
                         p.SetState(p.context,ProcessState.Start);
@@ -365,8 +374,14 @@ namespace UnityExt.Core {
                 if ((p.context & context) == 0) continue;
                 //Update internal clock
                 p.SetTime(id,p.useTimeScale ? t : tu,false);
+                #if UNITY_EDITOR  && PROCESS_PROFILER
+                if(p.profilerEnabled) if(p.profilerSampler!=null)p.profilerSampler.Begin();
+                #endif
                 //Update process
                 p.Update(context);
+                #if UNITY_EDITOR  && PROCESS_PROFILER
+                if(p.profilerEnabled) if (p.profilerSampler != null) p.profilerSampler.End();
+                #endif
             }
             
         }

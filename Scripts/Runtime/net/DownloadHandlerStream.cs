@@ -47,11 +47,14 @@ namespace UnityExt.Core {
         /// </summary>
         public float progress { get { return GetProgress(); } }
 
+        static byte[] m_prealloc_buffer = new byte[1024 * 1024];
+        static byte[] m_empty_buffer    = new byte[0];
+
         /// <summary>
         /// CTOR.
         /// </summary>
         /// <param name="p_stream"></param>
-        public DownloadHandlerStream(Stream p_stream) : base() {
+        public DownloadHandlerStream(Stream p_stream) : base(m_prealloc_buffer) {
             m_progress  = 0f;
             bytesLoaded = 0;
             bytesTotal  = 0;
@@ -69,7 +72,7 @@ namespace UnityExt.Core {
         /// <inheritdoc/>
         /// </summary>
         protected override byte[] GetData() {
-            return new byte[0];
+            return m_empty_buffer;
         }
 
         /// <summary>

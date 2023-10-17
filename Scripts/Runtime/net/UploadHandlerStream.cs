@@ -34,7 +34,7 @@ namespace UnityExt.Core {
         public Stream stream { get; private set; }
 
         /// <summary>
-        /// Internal
+        /// Unity's Upload Handler
         /// </summary>
         public UploadHandler handler { get; private set; }
 
