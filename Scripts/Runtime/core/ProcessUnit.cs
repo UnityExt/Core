@@ -311,7 +311,9 @@ namespace UnityExt.Core {
                     bool out_unit = p.outUnit;
                     if (out_unit) {
                         p.SetState(p.context,ProcessState.Stop);
+                        #if UNITY_EDITOR && PROCESS_PROFILER
                         p.profilerEnabled = false;
+                        #endif
                         manager.PushProcess(p);
                     }
                 }
