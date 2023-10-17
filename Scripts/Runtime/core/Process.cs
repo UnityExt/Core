@@ -664,7 +664,7 @@ namespace UnityExt.Core {
             }
         }
 
-        #if UNITY_EDITOR  && PROCESS_PROFILER
+        #if PROCESS_PROFILER
         /// <summary>
         /// Helper for profiler sample naming
         /// </summary>

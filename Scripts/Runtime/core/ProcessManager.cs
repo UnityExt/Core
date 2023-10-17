@@ -225,11 +225,11 @@ namespace UnityExt.Core {
             int o = !is_thread ? 0 : p_thread_index;
             int c = !is_thread ? 1 : maxThreads;                
             //Step execute all processes associated with unit
-            #if UNITY_EDITOR && PROCESS_PROFILER
+            #if PROCESS_PROFILER
             if(is_thread) Profiler.BeginThreadProfiling($"Scripting",p_thread_name);
             #endif
             pu.Execute(o,c);            
-            #if UNITY_EDITOR && PROCESS_PROFILER
+            #if PROCESS_PROFILER
             if(is_thread) Profiler.EndThreadProfiling();
             #endif
         }
@@ -498,7 +498,7 @@ namespace UnityExt.Core {
             if(!p_force)if (!isPlaying) { m_runner_exist = false; return; }
 
             //Create and cache 'runner'            
-            GameObject go = new GameObject("@Process.Runner",typeof(Runner));
+            GameObject go = new GameObject("@Proc.Runner",typeof(Runner));
             Runner go_r = go.GetComponent<Runner>();
             m_runner = go_r;
             go_r.manager = this;            

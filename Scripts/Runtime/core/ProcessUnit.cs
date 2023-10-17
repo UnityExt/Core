@@ -311,7 +311,7 @@ namespace UnityExt.Core {
                     bool out_unit = p.outUnit;
                     if (out_unit) {
                         p.SetState(p.context,ProcessState.Stop);
-                        #if UNITY_EDITOR && PROCESS_PROFILER
+                        #if PROCESS_PROFILER
                         p.profilerEnabled = false;
                         #endif
                         manager.PushProcess(p);
@@ -337,7 +337,7 @@ namespace UnityExt.Core {
                 lock (p) {
                     bool in_unit = p.inUnit;
                     //Init
-                    #if UNITY_EDITOR && PROCESS_PROFILER
+                    #if PROCESS_PROFILER
                     p.profilerKey     = $"Proc.{context}@{(string.IsNullOrEmpty(p.name) ? $"P#{p.pid}" : p.name)}";
                     CustomSampler cps = CustomSampler.Create(p.profilerKey);
                     p.profilerSampler = cps == null ? (CustomSampler)CustomSampler.Get(p.profilerKey) : cps;
@@ -376,12 +376,12 @@ namespace UnityExt.Core {
                 if ((p.context & context) == 0) continue;
                 //Update internal clock
                 p.SetTime(id,p.useTimeScale ? t : tu,false);
-                #if UNITY_EDITOR  && PROCESS_PROFILER
+                #if PROCESS_PROFILER
                 if(p.profilerEnabled) if(p.profilerSampler!=null)p.profilerSampler.Begin();
                 #endif
                 //Update process
                 p.Update(context);
-                #if UNITY_EDITOR  && PROCESS_PROFILER
+                #if PROCESS_PROFILER
                 if(p.profilerEnabled) if (p.profilerSampler != null) p.profilerSampler.End();
                 #endif
             }
