@@ -6,11 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.Jobs;
-using UnityEditor.VersionControl;
 using UnityEngine;
-using UnityEngine.Profiling;
-using UnityEngine.UI;
-using UnityExt.Core;
 using Task = System.Threading.Tasks.Task;
 
 #pragma warning disable CS0414

@@ -485,11 +485,9 @@ namespace UnityExt.Core {
             Thread thd = new Thread(delegate() {
                 Color[] res = BilinearScale(p_image,p_width,p_height,p_out_width,p_out_height);                
                 #if UNITY_EDITOR
-                    UnityEditor.EditorApplication.CallbackFunction cb=null;
-                    cb =  delegate() { if(p_callback!=null)p_callback(res); UnityEditor.EditorApplication.update -= cb; };
-                    UnityEditor.EditorApplication.update += cb;
-                #else
-                    Timer.Run(1f/60f,delegate(Timer t) { if(p_callback!=null)p_callback(res); });  
+                    Process.Start(delegate(ProcessContext ctx,Process pp) { if (pp.time < 1f / 60f) return true; if(p_callback!=null)p_callback(res); return false; }, ProcessContext.Editor);
+                #else                    
+                    Process.Start(delegate(ProcessContext ctx,Process pp) { if (pp.time < 1f / 60f) return true; if(p_callback!=null)p_callback(res); return false; }, ProcessContext.Update);
                 #endif
             });
             thd.Start();

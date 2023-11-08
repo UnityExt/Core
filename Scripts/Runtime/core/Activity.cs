@@ -352,7 +352,9 @@ namespace UnityExt.Core {
 
             Process p = null;            
             if (p_editor) {
+                #if UNITY_EDITOR
                 p = Process.StartEditor(this,p_context,f);
+                #endif
             } else {
                 p = Process.Start(this,p_context,f);
             }

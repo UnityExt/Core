@@ -132,6 +132,9 @@ namespace UnityExt.Core {
             //Assert runner and other runtime steps
             m_runner_exist = false;
             AssertRuntime();
+            #if !UNITY_EDITOR
+            OnValidate();
+            #endif
         }
 
         /// <summary>
@@ -238,10 +241,12 @@ namespace UnityExt.Core {
         /// Handler for editor loops
         /// </summary>
         private void UpdateEditor() {
+            #if UNITY_EDITOR
             //Keep storing the last clock sample
             isCompiling = EditorApplication.isCompiling;            
             //Step Editor Update context
             UpdateUnitContext(ProcessContext.Editor,-1,""); 
+            #endif
         }
 
         /// <summary>
@@ -313,6 +318,7 @@ namespace UnityExt.Core {
         /// Handler for playmode change
         /// </summary>
         /// <param name="p_state"></param>
+        #if UNITY_EDITOR
         private void EditorPlayModeChange(PlayModeStateChange p_state) {            
             switch (p_state) {
                 case PlayModeStateChange.ExitingEditMode: { isPlaying = true ; } break;
@@ -347,7 +353,7 @@ namespace UnityExt.Core {
                 it.SetPause(isPaused);
             }
         }
-
+        #endif
         /// <summary>
         /// CTOR.
         /// </summary>
