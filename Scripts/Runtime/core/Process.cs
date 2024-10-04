@@ -1076,6 +1076,17 @@ namespace UnityExt.Core {
         /// Disposes this process and returns it to the pool
         /// </summary>
         public void Dispose(bool p_force=false) {
+            //Remove any ongoing Task<> to prevent 'await' operations to continue
+            lv.ClearTask();
+            //Remove from the pool
+            InternalRemove(p_force);
+        }
+
+        /// <summary>
+        /// Removes this process from the pool
+        /// </summary>
+        /// <param name="p_force"></param>
+        internal void InternalRemove(bool p_force = false) {
             if (manager) manager.RemoveProcess(this,p_force);
         }
 
