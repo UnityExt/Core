@@ -349,8 +349,8 @@ namespace UnityExt.Core {
         public void Restart() {
             time = speed < 0f ? duration : 0f;
             step = speed < 0f ? count    : 0 ;
-            Stop();
-            Start();
+            //Stop();
+            //Start();            
         }
 
         #endregion
@@ -429,7 +429,7 @@ namespace UnityExt.Core {
                     bool step_end = speed < 0f ? step <= 0 : step >= count;
                     bool is_complete = count <= 0 ? false : step_end;
                     //If complete switch to 'stop'
-                    if (is_complete) { Stop(); break; }
+                    if (is_complete) { Complete(); break; }
                     //Reset time accumulator and back running
                     time = speed < 0f ? duration : 0f;
                     state = TimerState.Run;

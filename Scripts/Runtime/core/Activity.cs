@@ -277,6 +277,15 @@ namespace UnityExt.Core {
         }
 
         /// <summary>
+        /// Activity completion call, will continue 'await' calls
+        /// </summary>
+        public void Complete() {
+            if (!m_active) return;
+            m_active = false;
+            if (process != null) process.InternalRemove();
+        }
+
+        /// <summary>
         /// Throws an exception, stop execution and raise or not a C# exception
         /// </summary>
         /// <param name="p_error"></param>

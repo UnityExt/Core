@@ -645,7 +645,7 @@ namespace UnityExt.Core {
                 descriptor.Invoke();                    
                 //Invalidate descriptor
                 descriptor = null;
-                Stop();
+                Complete();
                 return;
             }
             //Flag to tell its the first loop

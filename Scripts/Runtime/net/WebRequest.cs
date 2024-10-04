@@ -633,7 +633,7 @@ namespace UnityExt.Core {
             if(m_uwr==null) return;
             InternalDispose();
             state = WebRequestState.Cancel;
-            base.Stop();
+            base.Complete();
         }
 
         /// <summary>
@@ -1005,7 +1005,8 @@ namespace UnityExt.Core {
                             return false;
                             //Finalize in unity main thread
                             case 1: {
-                                base.Stop();
+                                //Stop();
+                                base.Complete();
                             }
                             return false;
                         }
@@ -1029,7 +1030,8 @@ namespace UnityExt.Core {
                 case WebRequestState.CacheSuccess: {
                     code = HttpStatusCode.NotModified;
                     //End request as it was cache hit
-                    base.Stop();
+                    //base.Stop();
+                    base.Complete();
                 }
                 break;
 
