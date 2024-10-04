@@ -816,7 +816,7 @@ namespace UnityExt.Core {
                         //In case of just created or still running stop this activity
                         case TaskStatus.Created:
                         case TaskStatus.Running: {
-                            Dispose();
+                            InternalRemove();
                         }
                         return false;
                     }
@@ -1046,7 +1046,7 @@ namespace UnityExt.Core {
                 //If return 'false' stop execution
                 bool res = callback(ctx,this); 
                 if (!res) { 
-                    Dispose(); 
+                    InternalRemove(); 
                     return; 
                 } 
             }
@@ -1062,7 +1062,7 @@ namespace UnityExt.Core {
                         //Deferred needs JobHandle to be 'Complete' after finishing
                         if(deferred) lv.jh.Complete();
                         //Update interface and stop if requested
-                        if(!lv.j.OnJobUpdate()) { Dispose(); return; }
+                        if(!lv.j.OnJobUpdate()) { InternalRemove(); return; }
                         //Trigger next job run
                         lv.UpdateJob(deferred);
                     }                                        
