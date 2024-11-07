@@ -136,12 +136,12 @@ namespace UnityExt.Core {
         /// <summary>
         /// GUID for this object.
         /// </summary>
-        public string guid {
-            get { return m_guid;  }
-            set { m_guid = value; }
+        public string value {
+            get { return m_value;  }
+            set { m_value = value; }
         }
         [SerializeField]
-        private string m_guid;
+        private string m_value;
 
         /// <summary>
         /// Generates this object guid.
@@ -160,7 +160,7 @@ namespace UnityExt.Core {
                     m_charset_regx = null;
                 }
             }            
-            m_guid = Generate(expression,m_charset_regx); 
+            m_value = Generate(expression,m_charset_regx); 
         }
         internal string m_prev_charset;
 
@@ -190,7 +190,7 @@ namespace UnityExt.Core {
             for(int i=0;i<targets.Length;i++) {
                 GUID it = (GUID)targets[i];
                 if(!it) continue;
-                if(!string.IsNullOrEmpty(it.guid)) continue;
+                if(!string.IsNullOrEmpty(it.value)) continue;
                 it.Generate();
             }
         }
@@ -220,11 +220,11 @@ namespace UnityExt.Core {
             if(targets.Length<=1) {
                 GUILayout.BeginHorizontal();                                
                 GUI.backgroundColor = Color.gray;
-                vs = EditorGUILayout.TextField(target.guid,tf_style,GUILayout.Height(30f));                
+                vs = EditorGUILayout.TextField(target.value,tf_style,GUILayout.Height(30f));                
                 GUI.backgroundColor = Color.white;
                 GUILayout.EndHorizontal();
-                if(vs!=target.guid) {
-                    target.guid = vs;
+                if(vs!=target.value) {
+                    target.value = vs;
                 }
             }
             

@@ -286,7 +286,7 @@ namespace UnityExt.Core {
         /// <summary>
         /// Transform<>Component LUT.
         /// </summary>
-        static internal Dictionary<Transform,Component> m_component_lut = new Dictionary<Transform, Component>();
+        static internal Dictionary<Transform,Dictionary<Type,Component>> m_component_lut = new Dictionary<Transform, Dictionary<Type,Component>>();
 
         /// <summary>
         /// Performs a GetComponent operation and caches the result. In case the old reference is lost/destroyed it tries again.
@@ -295,16 +295,18 @@ namespace UnityExt.Core {
         /// <param name="p_type"></param>
         /// <returns>Component Instance</returns>
         static public Component GetComponentCached(this Transform p_target,Type p_type) {
-            Dictionary<Transform,Component> d = m_component_lut;
-            Component c = null;
-            Transform t = p_target;
-            if(d.ContainsKey(t)) {
-                c = d[t];
+            Component c  = null;
+            Transform t  = p_target;
+            Type      tp = p_type;
+            Dictionary<Transform,Dictionary<Type,Component>> db = m_component_lut;
+            Dictionary<Type,Component> db_type = db.ContainsKey(t) ? db[t] : (db[t] = new Dictionary<Type, Component>());            
+            if(db_type.ContainsKey(tp)) {
+                c = db_type[tp];
                 if(c) return c;
             }
             c = t.GetComponent(p_type);
             if(!c) return c;
-            d[t] = c;            
+            db_type[tp] = c;
             return c;
         }
 
@@ -405,17 +407,22 @@ namespace UnityExt.Core {
         /// <param name="p_type"></param>
         /// <returns></returns>
         static public Component GetComponentCached(this GameObject p_target,Type p_type) {
-            Dictionary<Transform,Component> d = TransformExt.m_component_lut;
-            Component c = null;
-            Transform t = p_target.transform;
-            if(d.ContainsKey(t)) {
-                c = d[t];
+            return TransformExt.GetComponentCached(p_target.transform,p_type);
+            /*
+            Component c  = null;
+            Transform t  = p_target.transform;
+            Type      tp = p_type;
+            Dictionary<Transform,Dictionary<Type,Component>> db = TransformExt.m_component_lut;
+            Dictionary<Type,Component> db_type = db.ContainsKey(t) ? db[t] : (db[t] = new Dictionary<Type, Component>());            
+            if(db_type.ContainsKey(tp)) {
+                c = db_type[tp];
                 if(c) return c;
             }
             c = t.GetComponent(p_type);
             if(!c) return c;
-            d[t] = c;
+            db_type[tp] = c;
             return c;
+            //*/
         }
 
         /// <summary>
@@ -448,13 +455,13 @@ namespace UnityExt.Core {
                     if(k>=c) return false;
                     //Reverse iterate the gc list to destroy leaf->root
                     Transform it = gc[c-1-k];                    
-                    GameObject.Destroy(it.gameObject);
+                    if(it)GameObject.Destroy(it.gameObject);
                     k++;
                 }
                 //Keep iterating
                 return true;
             });
-            destroy_loop.name = "GameObject.DestroyAsync";
+            destroy_loop.name = $"GameObject.{t.name}.DestroyAsync";
             //Returns the running destruction loop
             return destroy_loop;
         }
