@@ -949,23 +949,24 @@ namespace UnityExt.Core {
             bool   is_array = ctn is Array;            
             //Cast the array to speed up iteration
             if(is_array) {
-                if(ctn is byte     []) {byte     [] arr = (byte     [])ctn; arr[ctn_index] = (byte     )v;} else
-                if(ctn is bool     []) {bool     [] arr = (bool     [])ctn; arr[ctn_index] = (bool     )v;} else                
-                if(ctn is int      []) {int      [] arr = (int      [])ctn; arr[ctn_index] = (int      )v;} else
-                if(ctn is uint     []) {uint     [] arr = (uint     [])ctn; arr[ctn_index] = (uint     )v;} else
-                if(ctn is float    []) {float    [] arr = (float    [])ctn; arr[ctn_index] = (float    )v;} else
-                if(ctn is string   []) {string   [] arr = (string   [])ctn; arr[ctn_index] = (string   )v;} else
-                if(ctn is object   []) {object   [] arr = (object   [])ctn; arr[ctn_index] = (object   )v;} else
-                if(ctn is long     []) {long     [] arr = (long     [])ctn; arr[ctn_index] = (long     )v;} else
-                if(ctn is short    []) {short    [] arr = (short    [])ctn; arr[ctn_index] = (short    )v;} else
-                if(ctn is char     []) {char     [] arr = (char     [])ctn; arr[ctn_index] = (char     )v;} else
-                if(ctn is sbyte    []) {sbyte    [] arr = (sbyte    [])ctn; arr[ctn_index] = (sbyte    )v;} else
-                if(ctn is ushort   []) {ushort   [] arr = (ushort   [])ctn; arr[ctn_index] = (ushort   )v;} else                
-                if(ctn is ulong    []) {ulong    [] arr = (ulong    [])ctn; arr[ctn_index] = (ulong    )v;} else
-                if(ctn is DateTime []) {DateTime [] arr = (DateTime [])ctn; arr[ctn_index] = (DateTime )v;} else
-                if(ctn is TimeSpan []) {TimeSpan [] arr = (TimeSpan [])ctn; arr[ctn_index] = (TimeSpan )v;} else                                
-                if(ctn is Type     []) {Type     [] arr = (Type     [])ctn; arr[ctn_index] = (Type     )v;} else                                
-                if(ctn is decimal  []) {decimal  [] arr = (decimal  [])ctn; arr[ctn_index] = (decimal  )v;} else
+                Type ctn_t = ctn.GetType();
+                if(ctn_t == typeof(byte     [])) {byte     [] arr = (byte     [])ctn; arr[ctn_index] = (byte     )v;} else
+                if(ctn_t == typeof(bool     [])) {bool     [] arr = (bool     [])ctn; arr[ctn_index] = (bool     )v;} else                
+                if(ctn_t == typeof(int      [])) {int      [] arr = (int      [])ctn; arr[ctn_index] = (int      )v;} else
+                if(ctn_t == typeof(uint     [])) {uint     [] arr = (uint     [])ctn; arr[ctn_index] = (uint     )v;} else
+                if(ctn_t == typeof(float    [])) {float    [] arr = (float    [])ctn; arr[ctn_index] = (float    )v;} else
+                if(ctn_t == typeof(string   [])) {string   [] arr = (string   [])ctn; arr[ctn_index] = (string   )v;} else
+                if(ctn_t == typeof(object   [])) {object   [] arr = (object   [])ctn; arr[ctn_index] = (object   )v;} else
+                if(ctn_t == typeof(long     [])) {long     [] arr = (long     [])ctn; arr[ctn_index] = (long     )v;} else
+                if(ctn_t == typeof(short    [])) {short    [] arr = (short    [])ctn; arr[ctn_index] = (short    )v;} else
+                if(ctn_t == typeof(char     [])) {char     [] arr = (char     [])ctn; arr[ctn_index] = (char     )v;} else
+                if(ctn_t == typeof(sbyte    [])) {sbyte    [] arr = (sbyte    [])ctn; arr[ctn_index] = (sbyte    )v;} else
+                if(ctn_t == typeof(ushort   [])) {ushort   [] arr = (ushort   [])ctn; arr[ctn_index] = (ushort   )v;} else                
+                if(ctn_t == typeof(ulong    [])) {ulong    [] arr = (ulong    [])ctn; arr[ctn_index] = (ulong    )v;} else
+                if(ctn_t == typeof(DateTime [])) {DateTime [] arr = (DateTime [])ctn; arr[ctn_index] = (DateTime )v;} else
+                if(ctn_t == typeof(TimeSpan [])) {TimeSpan [] arr = (TimeSpan [])ctn; arr[ctn_index] = (TimeSpan )v;} else                                
+                if(ctn_t == typeof(Type     [])) {Type     [] arr = (Type     [])ctn; arr[ctn_index] = (Type     )v;} else                                
+                if(ctn_t == typeof(decimal  [])) {decimal  [] arr = (decimal  [])ctn; arr[ctn_index] = (decimal  )v;} else
                                        {Array       arr = (Array)ctn;       arr.SetValue(v,ctn_index);    }
             }
             else
