@@ -109,6 +109,11 @@ namespace UnityExt.Core {
         public float threadCoreRatio = 0.5f;
 
         /// <summary>
+        /// Thread exec rate in 'ms'
+        /// </summary>
+        public int threadRate = 10;
+
+        /// <summary>
         /// Resulting max number of threads.
         /// </summary>
         public int maxThreads;
@@ -262,7 +267,7 @@ namespace UnityExt.Core {
                 //If master kill or compile exit loop
                 if (m_thread_kill || isCompiling) break;
                 //Yield CPU
-                Thread.Sleep(0);
+                Thread.Sleep(threadRate);
                 #if UNITY_EDITOR
                 //Run Editor Step
                 UpdateUnitContext(ProcessContext.EditorThread,thd,thd_name);
